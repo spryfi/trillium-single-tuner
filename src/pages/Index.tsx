@@ -1,12 +1,24 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Header } from "@/components/Header";
 import { InputSection } from "@/components/InputSection";
 import { StatsDashboard } from "@/components/StatsDashboard";
 import { OutputTabs } from "@/components/OutputTabs";
 import { AnalysisResults } from "@/components/AnalysisResults";
+import { ParseComparison } from "@/components/ParseComparison";
+import { BatchTest } from "@/components/BatchTest";
+import { EffectivenessDashboard } from "@/components/EffectivenessDashboard";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { analyzeRecords } from "@/utils/patternDetection";
 import { generateCLWDPAT, generateParserConfig, generateImplementationReport, calculateStats } from "@/utils/outputGeneration";
+import { 
+  simulateDefaultParse, 
+  simulatePatternParse, 
+  generatePatternsFromRecord,
+  calculateEffectiveness,
+  CLWDPATPattern,
+  parseCLWDPATEntry
+} from "@/utils/parserSimulator";
 import { ParsedRecord, AnalysisStats } from "@/types/trillium";
 import { AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -49,6 +61,58 @@ const Index = () => {
     });
   };
 
+  // Generate patterns for simulation
+  const getSimulationPatterns = (): CLWDPATPattern[] => {
+    if (!results) return [];
+    
+    const patterns: CLWDPATPattern[] = [];
+    results.forEach(record => {
+      const recordPatterns = generatePatternsFromRecord(record);
+      patterns.push(...recordPatterns);
+    });
+    
+    return patterns;
+  };
+
+  // Generate test cases for batch testing
+  const getTestCases = () => {
+    if (!results) return [];
+    
+    const patterns = getSimulationPatterns();
+    return results
+      .filter(r => r.issues.length > 0)
+      .slice(0, 10) // Show first 10
+      .map(record => ({
+        input: record.original,
+        beforeParse: simulateDefaultParse(record.original),
+        afterParse: simulatePatternParse(record.original, patterns)
+      }));
+  };
+
+  // Get first record with issues for comparison demo
+  const getComparisonRecord = () => {
+    if (!results) return null;
+    
+    const recordWithIssues = results.find(r => r.issues.length > 0);
+    if (!recordWithIssues) return null;
+
+    const patterns = getSimulationPatterns();
+    
+    return {
+      original: recordWithIssues.original,
+      beforeParse: simulateDefaultParse(recordWithIssues.original),
+      afterParse: simulatePatternParse(recordWithIssues.original, patterns)
+    };
+  };
+
+  // Calculate effectiveness metrics
+  const getEffectivenessMetrics = () => {
+    if (!results) return null;
+    
+    const patterns = getSimulationPatterns();
+    return calculateEffectiveness(results, patterns);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -75,26 +139,69 @@ const Index = () => {
             />
           </Card>
 
-          {/* Stats Dashboard */}
-          {stats && (
-            <div className="space-y-4">
-              <h3 className="text-xl font-semibold">Analysis Summary</h3>
-              <StatsDashboard stats={stats} />
-            </div>
-          )}
-
-          {/* Detailed Issues */}
+          {/* Results Section */}
           {results && (
-            <AnalysisResults records={results} />
-          )}
+            <Tabs defaultValue="overview" className="space-y-6">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="simulator">Parse Simulator</TabsTrigger>
+                <TabsTrigger value="issues">Detailed Issues</TabsTrigger>
+                <TabsTrigger value="outputs">Generated Files</TabsTrigger>
+              </TabsList>
 
-          {/* Output Files */}
-          {outputs && (
-            <OutputTabs
-              clwdpat={outputs.clwdpat}
-              parserConfig={outputs.parserConfig}
-              report={outputs.report}
-            />
+              <TabsContent value="overview" className="space-y-6">
+                {stats && (
+                  <>
+                    <div className="space-y-4">
+                      <h3 className="text-xl font-semibold">Analysis Summary</h3>
+                      <StatsDashboard stats={stats} />
+                    </div>
+
+                    {getEffectivenessMetrics() && (
+                      <EffectivenessDashboard metrics={getEffectivenessMetrics()!} />
+                    )}
+                  </>
+                )}
+              </TabsContent>
+
+              <TabsContent value="simulator" className="space-y-6">
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-xl font-semibold mb-2">Parse Simulator</h3>
+                    <p className="text-muted-foreground">
+                      See how Trillium v7.15 will parse your data before and after applying the generated patterns.
+                    </p>
+                  </div>
+
+                  {getComparisonRecord() && (
+                    <ParseComparison
+                      original={getComparisonRecord()!.original}
+                      beforeParse={getComparisonRecord()!.beforeParse}
+                      afterParse={getComparisonRecord()!.afterParse}
+                    />
+                  )}
+
+                  <BatchTest
+                    testCases={getTestCases()}
+                    patterns={getSimulationPatterns()}
+                  />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="issues">
+                <AnalysisResults records={results} />
+              </TabsContent>
+
+              <TabsContent value="outputs">
+                {outputs && (
+                  <OutputTabs
+                    clwdpat={outputs.clwdpat}
+                    parserConfig={outputs.parserConfig}
+                    report={outputs.report}
+                  />
+                )}
+              </TabsContent>
+            </Tabs>
           )}
 
           {/* Help Section */}
