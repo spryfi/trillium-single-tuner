@@ -1,7 +1,43 @@
 import { ParsedRecord, CLWDPATEntry, ParserConfig, AnalysisStats } from '@/types/trillium';
+import { calculateMaxNumbNames, calculateMaxin } from './validation';
 
 /**
- * Generate CLWDPAT entries from analyzed records
+ * Format CLWDPAT entry with proper spacing and syntax
+ * Pattern must be followed by exactly 4+ spaces, then the command
+ */
+function formatCLWDPATEntry(entry: CLWDPATEntry): string {
+  // Pattern in quotes, padded to 30 chars total
+  const pattern = `'${entry.pattern}'`.padEnd(30);
+  // Instruction padded to 15 chars
+  const instruction = entry.instruction.padEnd(15);
+  // Attributes at the end
+  return `${pattern} ${instruction} ${entry.attributes}`;
+}
+
+/**
+ * Group patterns by type for better organization
+ */
+function groupPatternsByType(entries: CLWDPATEntry[]): Map<string, CLWDPATEntry[]> {
+  const groups = new Map<string, CLWDPATEntry[]>();
+  
+  entries.forEach(entry => {
+    const type = entry.attributes.includes('BUSINESS') ? 'business' :
+                 entry.attributes.includes('SUFFIX') || entry.attributes.includes('GEN=') ? 'generation' :
+                 entry.attributes.includes('ADDRESS') ? 'address' :
+                 entry.attributes.includes('LAST') && !entry.attributes.includes('FIRST') ? 'surname' :
+                 'person';
+    
+    if (!groups.has(type)) {
+      groups.set(type, []);
+    }
+    groups.get(type)!.push(entry);
+  });
+  
+  return groups;
+}
+
+/**
+ * Generate CLWDPAT patterns from analyzed records
  * Following Trillium v7.15 format specifications
  */
 export function generateCLWDPAT(records: ParsedRecord[]): string {
@@ -10,7 +46,8 @@ export function generateCLWDPAT(records: ParsedRecord[]): string {
   records.forEach(record => {
     record.issues.forEach(issue => {
       switch (issue.type) {
-        case 'spanish_name': {
+        case 'spanish_name':
+        case 'cultural_name': {
           // Full name pattern with first name
           if (issue.position > 0) {
             const firstName = record.tokens[issue.position - 1];
@@ -28,26 +65,17 @@ export function generateCLWDPAT(records: ParsedRecord[]): string {
             instruction: 'INS NAME END',
             attributes: 'ATT=LAST'
           });
-          break;
-        }
-
-        case 'cultural_name': {
-          // Similar to Spanish names
-          if (issue.position > 0) {
-            const firstName = record.tokens[issue.position - 1];
-            const fullPattern = `${firstName} ${issue.pattern}`;
-            entries.set(fullPattern, {
-              pattern: fullPattern,
-              instruction: 'INS NAME DEF',
-              attributes: `ATT=PERSON,FIRST='${firstName}',LAST='${issue.pattern}'`
+          
+          // Particle connector pattern (for multi-token particles)
+          const tokens = issue.pattern.split(' ');
+          if (tokens.length > 1) {
+            const particle = tokens.slice(0, -1).join(' ');
+            entries.set(particle, {
+              pattern: particle,
+              instruction: 'INS NAME MID',
+              attributes: 'ATT=CONNECTOR'
             });
           }
-          
-          entries.set(issue.pattern, {
-            pattern: issue.pattern,
-            instruction: 'INS NAME END',
-            attributes: 'ATT=LAST'
-          });
           break;
         }
 
@@ -84,27 +112,80 @@ export function generateCLWDPAT(records: ParsedRecord[]): string {
     });
   });
 
-  // Format entries according to CLWDPAT specifications
+  // Group entries by type
+  const grouped = groupPatternsByType(Array.from(entries.values()));
+  
+  // Generate output with headers
   const lines: string[] = [
-    '* Generated CLWDPAT patterns for Trillium v7.15',
-    '* Date: ' + new Date().toISOString(),
+    '*****************************************',
+    '* GENERATED CLWDPAT PATTERNS FOR V7.15',
+    `* Generated on: ${new Date().toLocaleString()}`,
+    '* BY: Trillium Pattern Analyzer',
     '*',
-    '* IMPORTANT: Longer patterns must come before shorter patterns',
-    '* to ensure correct matching precedence',
-    '*',
+    '* IMPORTANT: Add these patterns to your',
+    '* existing CLWDPAT file in order shown.',
+    '* Longer patterns MUST come first!',
+    '*****************************************',
     ''
   ];
 
-  // Sort patterns by length (longest first) to ensure proper precedence
-  const sortedEntries = Array.from(entries.values()).sort((a, b) => 
-    b.pattern.length - a.pattern.length
-  );
+  // Add person name patterns
+  if (grouped.has('person')) {
+    lines.push('*****************************************');
+    lines.push('* PERSON NAME PATTERNS');
+    lines.push('* Full names with cultural particles');
+    lines.push('*****************************************');
+    const personPatterns = grouped.get('person')!
+      .sort((a, b) => b.pattern.length - a.pattern.length);
+    personPatterns.forEach(entry => lines.push(formatCLWDPATEntry(entry)));
+    lines.push('');
+  }
 
-  sortedEntries.forEach(entry => {
-    const pattern = `'${entry.pattern}'`.padEnd(30);
-    const instruction = entry.instruction.padEnd(15);
-    lines.push(`${pattern} ${instruction} ${entry.attributes}`);
-  });
+  // Add surname patterns
+  if (grouped.has('surname')) {
+    lines.push('*****************************************');
+    lines.push('* SURNAME PATTERNS');
+    lines.push('* Last names with particles');
+    lines.push('*****************************************');
+    const surnamePatterns = grouped.get('surname')!
+      .sort((a, b) => b.pattern.length - a.pattern.length);
+    surnamePatterns.forEach(entry => lines.push(formatCLWDPATEntry(entry)));
+    lines.push('');
+  }
+
+  // Add generation patterns
+  if (grouped.has('generation')) {
+    lines.push('*****************************************');
+    lines.push('* GENERATION SUFFIX PATTERNS');
+    lines.push('* JR, SR, II, III, etc.');
+    lines.push('*****************************************');
+    grouped.get('generation')!.forEach(entry => lines.push(formatCLWDPATEntry(entry)));
+    lines.push('');
+  }
+
+  // Add business patterns
+  if (grouped.has('business')) {
+    lines.push('*****************************************');
+    lines.push('* BUSINESS INDICATOR PATTERNS');
+    lines.push('* LLC, INC, CORP, etc.');
+    lines.push('*****************************************');
+    grouped.get('business')!.forEach(entry => lines.push(formatCLWDPATEntry(entry)));
+    lines.push('');
+  }
+
+  // Add address patterns
+  if (grouped.has('address')) {
+    lines.push('*****************************************');
+    lines.push('* ADDRESS NUMBER PATTERNS');
+    lines.push('* Remove long numbers from name parsing');
+    lines.push('*****************************************');
+    grouped.get('address')!.forEach(entry => lines.push(formatCLWDPATEntry(entry)));
+    lines.push('');
+  }
+
+  lines.push('*****************************************');
+  lines.push('* END OF GENERATED PATTERNS');
+  lines.push('*****************************************');
 
   return lines.join('\n');
 }
@@ -112,34 +193,95 @@ export function generateCLWDPAT(records: ParsedRecord[]): string {
 /**
  * Generate parser configuration file (pfprsdrv.par)
  */
-export function generateParserConfig(config?: Partial<ParserConfig>): string {
+export function generateParserConfig(
+  records: ParsedRecord[],
+  config?: Partial<ParserConfig>
+): string {
+  // Calculate recommended values based on data
+  const allTokens = records.map(r => r.tokens);
+  const allOriginals = records.map(r => r.original);
+  
+  const recommendedMaxNames = calculateMaxNumbNames(allTokens);
+  const recommendedMaxin = calculateMaxin(allOriginals);
+  
+  const hasAddressIssues = records.some(r => 
+    r.issues.some(i => i.type === 'address_number')
+  );
+  
+  const hasComplexNames = records.some(r =>
+    r.issues.some(i => i.type === 'spanish_name' || i.type === 'cultural_name')
+  );
+
   const defaultConfig: ParserConfig = {
-    maxNumberNames: 15,
-    maxin: 99999,
-    threshold: -2,
+    maxNumberNames: recommendedMaxNames,
+    maxin: recommendedMaxin || 99999,
+    threshold: hasComplexNames ? -2 : -1,
     genBusinessNames: true,
     ...config
   };
 
   const lines = [
-    '* Trillium v7.15 Parser Configuration',
-    '* Generated: ' + new Date().toISOString(),
-    '*',
-    '* This configuration is optimized for handling cultural name patterns',
-    '* and business indicators in personal name fields',
-    '*',
+    '****************************************************',
+    '* TRILLIUM v7.15 PARSER CONFIGURATION UPDATES',
+    `* Generated: ${new Date().toLocaleString()}`,
+    '* BY: Trillium Pattern Analyzer',
+    '****************************************************',
     '',
-    `MAX_NUMB_NAMES          ${defaultConfig.maxNumberNames}`,
-    `MAXIN                   ${defaultConfig.maxin}`,
-    `THRESHOLD               ${defaultConfig.threshold}`,
-    `GEN_BUSINESS_NAMES      ${defaultConfig.genBusinessNames ? 'Y' : 'N'}`,
+    '# INSTRUCTIONS:',
+    '# 1. Locate these parameters in your pfprsdrv.par file',
+    '# 2. Update the values as shown below',
+    '# 3. Add any missing parameters',
+    '# 4. Keep all other parameters unchanged',
     '',
-    '* Additional recommendations:',
-    '* - Use CLWDPAT patterns for all cultural name particles',
-    '* - Test with sample data before production deployment',
-    '* - Monitor parsing logs for new pattern discoveries',
+    '****************************************************',
+    '* RECOMMENDED PARAMETER CHANGES',
+    '****************************************************',
     ''
   ];
+
+  // MAX_NUMB_NAMES
+  lines.push('# Maximum number of name parts to parse');
+  lines.push(`# Current data contains up to ${Math.max(...allTokens.map(t => t.length))} tokens`);
+  lines.push(`# Recommended: ${recommendedMaxNames} (includes safety buffer)`);
+  lines.push(`MAX_NUMB_NAMES          ${defaultConfig.maxNumberNames}`);
+  lines.push('');
+
+  // MAXIN (only if needed)
+  if (hasAddressIssues) {
+    lines.push('# Maximum length of input address numbers');
+    lines.push('# Your data contains 5+ digit numbers');
+    lines.push(`# Recommended: ${defaultConfig.maxin}`);
+    lines.push(`MAXIN ${defaultConfig.maxin}`);
+    lines.push('');
+  }
+
+  // THRESHOLD
+  lines.push('# Parsing confidence threshold');
+  lines.push(`# ${hasComplexNames ? 'Complex names detected - lowering threshold' : 'Standard threshold'}`);
+  lines.push(`THRESHOLD          ${defaultConfig.threshold}`);
+  lines.push('');
+
+  // GEN_BUSINESS_NAMES
+  lines.push('# Generate business name output');
+  lines.push('# Recommended: Y to handle business entities properly');
+  lines.push(`GEN_BUSINESS_NAMES          ${defaultConfig.genBusinessNames ? 'Y' : 'N'}`);
+  lines.push('');
+
+  lines.push('****************************************************');
+  lines.push('* VALIDATION NOTES');
+  lines.push('****************************************************');
+  lines.push('');
+  lines.push('After making changes:');
+  lines.push('1. Backup your current pfprsdrv.par file');
+  lines.push('2. Apply these changes to YOUR file (do not replace entire file)');
+  lines.push('3. Test with sample data before production use');
+  lines.push('4. Monitor parser logs for unexpected behavior');
+  lines.push('');
+  
+  if (recommendedMaxNames > 15) {
+    lines.push('WARNING: MAX_NUMB_NAMES > 15 may impact performance');
+    lines.push('');
+  }
 
   return lines.join('\n');
 }
@@ -189,82 +331,178 @@ export function generateImplementationReport(
   records: ParsedRecord[],
   stats: AnalysisStats
 ): string {
+  const recordsWithIssues = records.filter(r => r.issues.length > 0);
+  const uniquePatterns = new Set<string>();
+  records.forEach(r => r.issues.forEach(i => uniquePatterns.add(i.pattern)));
+
   const lines = [
-    '# Trillium v7.15 Pattern Analysis Report',
+    '# Trillium v7.15 Implementation Guide',
     '',
     `Generated: ${new Date().toLocaleString()}`,
     '',
     '## Summary Statistics',
     '',
-    `- Total Records Analyzed: ${stats.totalRecords}`,
-    `- Spanish Name Issues: ${stats.spanishNames}`,
-    `- Other Cultural Names: ${stats.culturalNames}`,
-    `- Generation Suffixes: ${stats.generationSuffixes}`,
-    `- Business Indicators: ${stats.businessIndicators}`,
-    `- Address Number Issues: ${stats.addressIssues}`,
+    `- **Total Records Analyzed**: ${stats.totalRecords}`,
+    `- **Records with Issues**: ${recordsWithIssues.length}`,
+    `- **Unique Patterns Found**: ${uniquePatterns.size}`,
+    `- **Spanish Name Issues**: ${stats.spanishNames}`,
+    `- **Cultural Name Issues**: ${stats.culturalNames}`,
+    `- **Generation Suffixes**: ${stats.generationSuffixes}`,
+    `- **Business Indicators**: ${stats.businessIndicators}`,
+    `- **Address Number Issues**: ${stats.addressIssues}`,
     '',
-    '## Implementation Steps',
+    '## Files to Update',
     '',
-    '### 1. Backup Current Configuration',
+    '### 1. CLWDPAT File',
+    '',
+    '**Location**: Typically in your Trillium data quality project directory',
+    '',
+    '**Steps**:',
+    '1. **Backup current file**: `cp CLWDPAT CLWDPAT.backup.$(date +%Y%m%d)`',
+    '2. **Open CLWDPAT in editor**: Use mainframe editor or download to workstation',
+    '3. **Find insertion point**: Locate existing name patterns section',
+    '4. **Add generated patterns**: Copy patterns from CLWDPAT tab',
+    '5. **Check pattern order**: Ensure longer patterns appear before shorter ones',
+    '6. **Save file**: Upload back to mainframe if edited locally',
+    '',
+    '**Important Notes**:',
+    '- DO NOT replace entire file - only add new patterns',
+    '- Pattern order matters: longest patterns must be first',
+    '- Check for duplicate patterns before adding',
+    '- Test syntax with a few patterns before adding all',
+    '',
+    '### 2. pfprsdrv.par File',
+    '',
+    '**Location**: Typically `pfprsdrv.par` in your Trillium directory',
+    '',
+    '**Steps**:',
+    '1. **Backup current file**: `cp pfprsdrv.par pfprsdrv.par.backup.$(date +%Y%m%d)`',
+    '2. **Open file in editor**',
+    '3. **Locate these parameters**:',
+    '   - `MAX_NUMB_NAMES` (typically around line 10-20)',
+    '   - `MAXIN` (add if missing)',
+    '   - `THRESHOLD` (typically around line 15-25)',
+    '   - `GEN_BUSINESS_NAMES` (typically around line 20-30)',
+    '4. **Update values**: Use values from pfprsdrv.par tab',
+    '5. **Save file**',
+    '',
+    '**Parameter Explanations**:',
+    '',
+    '- **MAX_NUMB_NAMES**: Maximum tokens in a name',
+    '  - Too low: Names get truncated',
+    '  - Too high: Performance impact',
+    '  - Recommended: Actual max + 50% buffer',
+    '',
+    '- **MAXIN**: Maximum length of address number',
+    '  - Only needed if you have 5+ digit numbers',
+    '  - Set to 10^(number of digits) - 1',
+    '',
+    '- **THRESHOLD**: Parsing confidence threshold',
+    '  - Lower = more lenient parsing',
+    '  - -2 is good for complex multicultural names',
+    '  - -1 is standard',
+    '',
+    '- **GEN_BUSINESS_NAMES**: Generate business entity output',
+    '  - Y = Yes (recommended)',
+    '  - N = No',
+    '',
+    '## Testing Procedure',
+    '',
+    '### Step 1: Syntax Validation',
     '```bash',
-    'cp CLWDPAT CLWDPAT.backup',
-    'cp pfprsdrv.par pfprsdrv.par.backup',
+    '# Test CLWDPAT syntax',
+    'trillium_validator CLWDPAT',
+    '',
+    '# If no validator available, manually check:',
+    '# - All patterns have opening and closing quotes',
+    '# - At least 4 spaces between pattern and command',
+    '# - Valid commands (INS, MOD, DEL)',
+    '# - Valid attributes (ATT=PERSON, ATT=BUSINESS, etc.)',
     '```',
     '',
-    '### 2. Update CLWDPAT File',
-    '- Add the generated patterns to your CLWDPAT file',
-    '- Ensure longer patterns appear before shorter ones',
-    '- Test pattern matching with sample data',
-    '',
-    '### 3. Update Parser Configuration',
-    '- Apply the pfprsdrv.par settings',
-    '- Adjust MAX_NUMB_NAMES if you have very complex names',
-    '- Set GEN_BUSINESS_NAMES=Y to handle business indicators',
-    '',
-    '### 4. Testing',
+    '### Step 2: Small Sample Test',
     '```bash',
-    '# Run parser with test data',
-    'trillium_parser -test -input test_data.txt',
+    '# Create test file with 10-20 records',
+    'head -20 problem_data.txt > test_sample.txt',
     '',
-    '# Review parsing logs',
-    'tail -f parser.log',
+    '# Run parser',
+    'trillium_parser -input test_sample.txt -output test_results.txt',
+    '',
+    '# Review results',
+    'diff test_sample.txt test_results.txt',
     '```',
     '',
-    '### 5. Validation',
-    '- Verify all patterns match correctly',
-    '- Check for any new parsing errors',
-    '- Monitor performance impact',
+    '### Step 3: Full Dataset Test',
+    '```bash',
+    '# Run on full dataset',
+    'trillium_parser -input full_data.txt -output parsed_results.txt',
     '',
-    '## Known Limitations (v7.15)',
+    '# Check for errors',
+    'grep ERROR parser.log',
     '',
-    '- NO JOIN_LINES support (requires v14+)',
-    '- All multi-token handling requires explicit patterns',
-    '- Pattern precedence is length-based only',
-    '- Complex regex patterns not supported',
+    '# Verify name party counts',
+    '# BEFORE: Names split into multiple parties',
+    '# AFTER: Names in single party',
+    '```',
     '',
-    '## Pattern Examples',
+    '## Rollback Procedure',
+    '',
+    'If patterns cause issues:',
+    '',
+    '```bash',
+    '# Restore backups',
+    'cp CLWDPAT.backup.YYYYMMDD CLWDPAT',
+    'cp pfprsdrv.par.backup.YYYYMMDD pfprsdrv.par',
+    '',
+    '# Restart parser service if needed',
+    'trillium_restart',
+    '```',
+    '',
+    '## Common Issues',
+    '',
+    '### Pattern Not Matching',
+    '- Check for extra spaces in pattern',
+    '- Verify uppercase/lowercase',
+    '- Ensure pattern appears before shorter variants',
+    '',
+    '### Parser Errors',
+    '- Validate CLWDPAT syntax (quotes, spacing)',
+    '- Check pfprsdrv.par parameters are numeric where required',
+    '- Review parser log for specific error messages',
+    '',
+    '### Performance Issues',
+    '- Reduce MAX_NUMB_NAMES if possible',
+    '- Remove very long patterns if not needed',
+    '- Consider pattern optimization',
+    '',
+    '## Pattern Examples from Your Data',
     ''
   ];
 
-  // Add unique pattern examples
-  const uniquePatterns = new Set<string>();
-  records.forEach(record => {
+  // Add some example patterns
+  const exampleIssues = recordsWithIssues.slice(0, 5);
+  exampleIssues.forEach(record => {
+    lines.push(`### Example: ${record.original}`);
     record.issues.forEach(issue => {
-      uniquePatterns.add(issue.pattern);
+      lines.push(`- **Issue**: ${issue.type.replace('_', ' ')}`);
+      lines.push(`- **Pattern**: \`${issue.pattern}\``);
+      lines.push(`- **Confidence**: ${Math.round(issue.confidence * 100)}%`);
+      lines.push(`- **Suggestion**: ${issue.suggestion}`);
     });
+    lines.push('');
   });
 
-  Array.from(uniquePatterns).slice(0, 10).forEach(pattern => {
-    lines.push(`- \`${pattern}\``);
-  });
-
+  lines.push('## Support and Maintenance');
   lines.push('');
-  lines.push('## Support');
+  lines.push('- Keep backup files for at least 30 days');
+  lines.push('- Document all changes in your change log');
+  lines.push('- Monitor parser logs regularly');
+  lines.push('- Re-analyze data quarterly for new patterns');
   lines.push('');
-  lines.push('For additional assistance with Trillium v7.15 name parsing:');
-  lines.push('- Review the mainframe documentation');
-  lines.push('- Test patterns incrementally');
-  lines.push('- Keep this report for future reference');
+  lines.push('---');
+  lines.push('');
+  lines.push('Generated by Trillium Pattern Analyzer');
+  lines.push(`Analysis Date: ${new Date().toLocaleString()}`);
 
   return lines.join('\n');
 }

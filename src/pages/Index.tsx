@@ -34,7 +34,7 @@ const Index = () => {
     const calculatedStats = calculateStats(analyzed);
 
     const clwdpat = generateCLWDPAT(analyzed);
-    const parserConfig = generateParserConfig();
+    const parserConfig = generateParserConfig(analyzed);
     const report = generateImplementationReport(analyzed, calculatedStats);
 
     setResults(analyzed);
