@@ -1,16 +1,13 @@
 import { ParsedRecord, Issue, IssueType } from '@/types/trillium';
-
-// Spanish name particles
-const SPANISH_PARTICLES = ['DE', 'DEL', 'DE LA', 'DE LAS', 'DE LOS'];
-
-// Other cultural name particles
-const CULTURAL_PARTICLES = ['VAN DER', 'VAN', 'VON', 'MAC', 'MC', "O'", 'IBN', 'BIN', 'AL'];
-
-// Generation suffixes
-const GENERATION_SUFFIXES = ['JR', 'SR', 'II', 'III', 'IV', 'V', 'JUNIOR', 'SENIOR'];
-
-// Business indicators
-const BUSINESS_INDICATORS = ['LLC', 'INC', 'CORP', 'LTD', 'D/B/A', 'DBA', 'COMPANY', 'CO'];
+import { 
+  SPANISH_PARTICLES, 
+  SPANISH_SURNAMES,
+  ALL_CULTURAL_PARTICLES, 
+  GENERATION_SUFFIXES, 
+  BUSINESS_INDICATORS,
+  BUSINESS_TYPES,
+  COMMON_FIRST_NAMES
+} from './constants';
 
 /**
  * Tokenize input string into normalized tokens
@@ -24,6 +21,32 @@ export function tokenize(input: string): string[] {
 }
 
 /**
+ * Calculate confidence score for a pattern match
+ */
+function calculateConfidence(tokens: string[], position: number, type: IssueType): number {
+  let confidence = 0.5; // Base confidence
+  
+  if (type === 'spanish_name') {
+    // Higher confidence if we see a known Spanish surname
+    const hasKnownSurname = tokens.some(t => SPANISH_SURNAMES.includes(t));
+    if (hasKnownSurname) confidence += 0.3;
+    
+    // Higher confidence if first name looks common
+    if (position > 0 && COMMON_FIRST_NAMES.includes(tokens[position - 1])) {
+      confidence += 0.2;
+    }
+  } else if (type === 'business_indicator') {
+    // Business indicators are usually very high confidence
+    confidence = 0.95;
+  } else if (type === 'generation_suffix') {
+    // High confidence for standard suffixes
+    confidence = 0.9;
+  }
+  
+  return Math.min(confidence, 1.0);
+}
+
+/**
  * Detect Spanish name patterns
  * Spanish names often include particles like "DE LOS" that should stay with the surname
  */
@@ -33,12 +56,18 @@ function detectSpanishName(tokens: string[]): Issue | null {
     if (i + 2 < tokens.length) {
       const threeToken = `${tokens[i]} ${tokens[i + 1]} ${tokens[i + 2]}`;
       if (SPANISH_PARTICLES.includes(threeToken)) {
+        const lastName = tokens.slice(i).join(' ');
+        const firstName = i > 0 ? tokens[i - 1] : '';
         return {
           type: 'spanish_name',
-          pattern: tokens.slice(i).join(' '),
+          pattern: lastName,
           tokens: tokens.slice(i),
           position: i,
-          severity: 'high'
+          severity: 'high',
+          confidence: calculateConfidence(tokens, i, 'spanish_name'),
+          suggestion: firstName 
+            ? `Add pattern: '${firstName} ${lastName}' INS NAME DEF ATT=PERSON,FIRST='${firstName}',LAST='${lastName}'`
+            : `Add pattern: '${lastName}' INS NAME END ATT=LAST`
         };
       }
     }
@@ -47,24 +76,36 @@ function detectSpanishName(tokens: string[]): Issue | null {
     if (i + 1 < tokens.length) {
       const twoToken = `${tokens[i]} ${tokens[i + 1]}`;
       if (SPANISH_PARTICLES.includes(twoToken)) {
+        const lastName = tokens.slice(i).join(' ');
+        const firstName = i > 0 ? tokens[i - 1] : '';
         return {
           type: 'spanish_name',
-          pattern: tokens.slice(i).join(' '),
+          pattern: lastName,
           tokens: tokens.slice(i),
           position: i,
-          severity: 'high'
+          severity: 'high',
+          confidence: calculateConfidence(tokens, i, 'spanish_name'),
+          suggestion: firstName
+            ? `Add pattern: '${firstName} ${lastName}' INS NAME DEF ATT=PERSON,FIRST='${firstName}',LAST='${lastName}'`
+            : `Add pattern: '${lastName}' INS NAME END ATT=LAST`
         };
       }
     }
     
     // Check for single-token particles
     if (SPANISH_PARTICLES.includes(tokens[i])) {
+      const lastName = tokens.slice(i).join(' ');
+      const firstName = i > 0 ? tokens[i - 1] : '';
       return {
         type: 'spanish_name',
-        pattern: tokens.slice(i).join(' '),
+        pattern: lastName,
         tokens: tokens.slice(i),
         position: i,
-        severity: 'high'
+        severity: 'high',
+        confidence: calculateConfidence(tokens, i, 'spanish_name'),
+        suggestion: firstName
+          ? `Add pattern: '${firstName} ${lastName}' INS NAME DEF ATT=PERSON,FIRST='${firstName}',LAST='${lastName}'`
+          : `Add pattern: '${lastName}' INS NAME END ATT=LAST`
       };
     }
   }
@@ -79,25 +120,37 @@ function detectCulturalName(tokens: string[]): Issue | null {
     // Check for multi-token particles
     if (i + 1 < tokens.length) {
       const twoToken = `${tokens[i]} ${tokens[i + 1]}`;
-      if (CULTURAL_PARTICLES.includes(twoToken)) {
+      if (ALL_CULTURAL_PARTICLES.includes(twoToken)) {
+        const lastName = tokens.slice(i).join(' ');
+        const firstName = i > 0 ? tokens[i - 1] : '';
         return {
           type: 'cultural_name',
-          pattern: tokens.slice(i).join(' '),
+          pattern: lastName,
           tokens: tokens.slice(i),
           position: i,
-          severity: 'medium'
+          severity: 'medium',
+          confidence: 0.8,
+          suggestion: firstName
+            ? `Add pattern: '${firstName} ${lastName}' INS NAME DEF ATT=PERSON,FIRST='${firstName}',LAST='${lastName}'`
+            : `Add pattern: '${lastName}' INS NAME END ATT=LAST`
         };
       }
     }
     
     // Check for single-token particles
-    if (CULTURAL_PARTICLES.includes(tokens[i])) {
+    if (ALL_CULTURAL_PARTICLES.includes(tokens[i])) {
+      const lastName = tokens.slice(i).join(' ');
+      const firstName = i > 0 ? tokens[i - 1] : '';
       return {
         type: 'cultural_name',
-        pattern: tokens.slice(i).join(' '),
+        pattern: lastName,
         tokens: tokens.slice(i),
         position: i,
-        severity: 'medium'
+        severity: 'medium',
+        confidence: 0.8,
+        suggestion: firstName
+          ? `Add pattern: '${firstName} ${lastName}' INS NAME DEF ATT=PERSON,FIRST='${firstName}',LAST='${lastName}'`
+          : `Add pattern: '${lastName}' INS NAME END ATT=LAST`
       };
     }
   }
@@ -109,13 +162,16 @@ function detectCulturalName(tokens: string[]): Issue | null {
  */
 function detectGenerationSuffix(tokens: string[]): Issue | null {
   for (let i = 0; i < tokens.length; i++) {
-    if (GENERATION_SUFFIXES.includes(tokens[i])) {
+    const normalized = tokens[i].replace(/\./g, '');
+    if (GENERATION_SUFFIXES.includes(normalized)) {
       return {
         type: 'generation_suffix',
         pattern: tokens[i],
         tokens: [tokens[i]],
         position: i,
-        severity: 'low'
+        severity: 'low',
+        confidence: 0.9,
+        suggestion: `Add pattern: '${tokens[i]}' INS NAME MOD ATT=SUFFIX`
       };
     }
   }
@@ -127,13 +183,16 @@ function detectGenerationSuffix(tokens: string[]): Issue | null {
  */
 function detectBusinessIndicator(tokens: string[]): Issue | null {
   for (let i = 0; i < tokens.length; i++) {
-    if (BUSINESS_INDICATORS.includes(tokens[i])) {
+    const normalized = tokens[i].toUpperCase().replace(/\./g, '');
+    if (BUSINESS_INDICATORS.includes(normalized) || BUSINESS_TYPES.includes(normalized)) {
       return {
         type: 'business_indicator',
         pattern: tokens[i],
         tokens: [tokens[i]],
         position: i,
-        severity: 'high'
+        severity: 'high',
+        confidence: 0.95,
+        suggestion: `Add pattern: '${tokens[i]}' INS NAME END ATT=BUSINESS`
       };
     }
   }
@@ -151,7 +210,9 @@ function detectAddressNumber(tokens: string[]): Issue | null {
         pattern: tokens[i],
         tokens: [tokens[i]],
         position: i,
-        severity: 'medium'
+        severity: 'medium',
+        confidence: 1.0,
+        suggestion: `Increase MAXIN parameter to handle ${tokens[i].length}-digit numbers`
       };
     }
   }

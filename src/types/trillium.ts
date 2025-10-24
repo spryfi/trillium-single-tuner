@@ -10,6 +10,8 @@ export interface Issue {
   tokens: string[];
   position: number;
   severity: 'high' | 'medium' | 'low';
+  confidence: number;
+  suggestion: string;
 }
 
 export type IssueType = 

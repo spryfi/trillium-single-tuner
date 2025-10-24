@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "@/components/Header";
 import { InputSection } from "@/components/InputSection";
 import { StatsDashboard } from "@/components/StatsDashboard";
 import { OutputTabs } from "@/components/OutputTabs";
+import { AnalysisResults } from "@/components/AnalysisResults";
 import { Card } from "@/components/ui/card";
 import { analyzeRecords } from "@/utils/patternDetection";
 import { generateCLWDPAT, generateParserConfig, generateImplementationReport, calculateStats } from "@/utils/outputGeneration";
 import { ParsedRecord, AnalysisStats } from "@/types/trillium";
 import { AlertCircle } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const Index = () => {
   const [input, setInput] = useState("");
@@ -19,6 +21,7 @@ const Index = () => {
     parserConfig: string;
     report: string;
   } | null>(null);
+  const { toast } = useToast();
 
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
@@ -38,6 +41,12 @@ const Index = () => {
     setStats(calculatedStats);
     setOutputs({ clwdpat, parserConfig, report });
     setIsAnalyzing(false);
+
+    const totalIssues = analyzed.filter(r => r.issues.length > 0).length;
+    toast({
+      title: "Analysis complete",
+      description: `Found ${totalIssues} records with issues across ${lines.length} records`,
+    });
   };
 
   return (
@@ -69,9 +78,14 @@ const Index = () => {
           {/* Stats Dashboard */}
           {stats && (
             <div className="space-y-4">
-              <h3 className="text-xl font-semibold">Analysis Results</h3>
+              <h3 className="text-xl font-semibold">Analysis Summary</h3>
               <StatsDashboard stats={stats} />
             </div>
+          )}
+
+          {/* Detailed Issues */}
+          {results && (
+            <AnalysisResults records={results} />
           )}
 
           {/* Output Files */}
