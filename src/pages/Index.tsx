@@ -1,138 +1,120 @@
 import { useState } from "react";
 import { Header } from "@/components/Header";
-import { CodeInput } from "@/components/CodeInput";
-import { Button } from "@/components/ui/button";
+import { InputSection } from "@/components/InputSection";
+import { StatsDashboard } from "@/components/StatsDashboard";
+import { OutputTabs } from "@/components/OutputTabs";
 import { Card } from "@/components/ui/card";
-import { Sparkles, Copy, Check } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { analyzeRecords } from "@/utils/patternDetection";
+import { generateCLWDPAT, generateParserConfig, generateImplementationReport, calculateStats } from "@/utils/outputGeneration";
+import { ParsedRecord, AnalysisStats } from "@/types/trillium";
+import { AlertCircle } from "lucide-react";
 
 const Index = () => {
-  const [oldCode, setOldCode] = useState("");
-  const [fixedCode, setFixedCode] = useState("");
+  const [input, setInput] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const { toast } = useToast();
+  const [results, setResults] = useState<ParsedRecord[] | null>(null);
+  const [stats, setStats] = useState<AnalysisStats | null>(null);
+  const [outputs, setOutputs] = useState<{
+    clwdpat: string;
+    parserConfig: string;
+    report: string;
+  } | null>(null);
 
   const handleAnalyze = async () => {
-    if (!oldCode.trim()) {
-      toast({
-        title: "No code provided",
-        description: "Please paste some code to analyze",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsAnalyzing(true);
-    
-    // Simulated AI response for now - will be replaced with actual AI integration
-    setTimeout(() => {
-      setFixedCode(`// Modern refactored version\n// This is a placeholder - AI integration coming soon!\n\n${oldCode}`);
-      setIsAnalyzing(false);
-      toast({
-        title: "Analysis complete!",
-        description: "Your code has been modernized",
-      });
-    }, 2000);
-  };
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(fixedCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-    toast({
-      title: "Copied to clipboard",
-      description: "Fixed code is ready to use",
-    });
+    // Simulate processing time for better UX
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    const lines = input.split('\n').filter(line => line.trim());
+    const analyzed = analyzeRecords(lines);
+    const calculatedStats = calculateStats(analyzed);
+
+    const clwdpat = generateCLWDPAT(analyzed);
+    const parserConfig = generateParserConfig();
+    const report = generateImplementationReport(analyzed, calculatedStats);
+
+    setResults(analyzed);
+    setStats(calculatedStats);
+    setOutputs({ clwdpat, parserConfig, report });
+    setIsAnalyzing(false);
   };
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <main className="container mx-auto px-4 py-8">
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="text-center space-y-2 mb-8">
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              Transform Legacy Code Instantly
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              Paste your old code patterns and get modern, optimized alternatives powered by AI
+        <div className="max-w-7xl mx-auto space-y-8">
+          {/* Header Section */}
+          <div className="text-center space-y-2">
+            <h2 className="text-3xl font-bold">Trillium v7.15 Pattern Analyzer</h2>
+            <p className="text-muted-foreground max-w-3xl mx-auto">
+              Analyze problematic name parsing patterns and generate CLWDPAT entries and parser 
+              configuration for Trillium v7.15 mainframe systems. Handles Spanish names, cultural 
+              particles, generation suffixes, and business indicators.
             </p>
           </div>
 
-          <div className="grid lg:grid-cols-2 gap-6">
-            <Card className="p-6 flex flex-col">
-              <CodeInput
-                value={oldCode}
-                onChange={setOldCode}
-                label="Old Code Pattern"
-                placeholder="// Paste your legacy code here...&#10;function oldFunction() {&#10;  // Your code&#10;}"
-                disabled={isAnalyzing}
-              />
-            </Card>
+          {/* Input Section */}
+          <Card className="p-6">
+            <InputSection
+              value={input}
+              onChange={setInput}
+              onAnalyze={handleAnalyze}
+              isAnalyzing={isAnalyzing}
+            />
+          </Card>
 
-            <Card className="p-6 flex flex-col">
-              <div className="flex items-center justify-between mb-2">
-                <CodeInput
-                  value={fixedCode}
-                  onChange={setFixedCode}
-                  label="Modern Solution"
-                  placeholder="// Your modernized code will appear here..."
-                  disabled={isAnalyzing}
-                />
+          {/* Stats Dashboard */}
+          {stats && (
+            <div className="space-y-4">
+              <h3 className="text-xl font-semibold">Analysis Results</h3>
+              <StatsDashboard stats={stats} />
+            </div>
+          )}
+
+          {/* Output Files */}
+          {outputs && (
+            <OutputTabs
+              clwdpat={outputs.clwdpat}
+              parserConfig={outputs.parserConfig}
+              report={outputs.report}
+            />
+          )}
+
+          {/* Help Section */}
+          <Card className="p-6 bg-muted/50 border-blue-200 dark:border-blue-900">
+            <div className="flex gap-3">
+              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div className="space-y-2">
+                <h3 className="font-semibold text-blue-900 dark:text-blue-100">
+                  Trillium v7.15 Limitations
+                </h3>
+                <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1">
+                  <li>• <strong>NO JOIN_LINES support</strong> - This feature requires v14 or higher</li>
+                  <li>• <strong>All multi-token patterns must be explicit</strong> - Each combination needs its own pattern</li>
+                  <li>• <strong>Pattern precedence is length-based</strong> - Longer patterns always match first</li>
+                  <li>• <strong>Test incrementally</strong> - Add patterns gradually and validate parsing results</li>
+                </ul>
               </div>
-              {fixedCode && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCopy}
-                  className="mt-2 self-end"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-4 h-4 mr-2" />
-                      Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copy Code
-                    </>
-                  )}
-                </Button>
-              )}
-            </Card>
-          </div>
+            </div>
+          </Card>
 
-          <div className="flex justify-center pt-4">
-            <Button
-              size="lg"
-              onClick={handleAnalyze}
-              disabled={isAnalyzing || !oldCode.trim()}
-              className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground px-8"
-            >
-              <Sparkles className="w-5 h-5" />
-              {isAnalyzing ? "Analyzing..." : "Analyze & Fix Code"}
-            </Button>
-          </div>
-
-          <Card className="p-6 bg-muted/50">
-            <h3 className="font-semibold mb-3 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" />
-              Common Patterns We Fix
-            </h3>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {/* Pattern Categories Help */}
+          <Card className="p-6">
+            <h3 className="font-semibold mb-3">Pattern Categories Detected</h3>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {[
-                "Callback Hell → Async/Await",
-                "Class Components → Hooks",
-                "Var → Const/Let",
-                "Promises → Modern Syntax",
-                "Old APIs → New Standards",
-                "Performance Anti-patterns",
-              ].map((pattern) => (
-                <div key={pattern} className="text-sm px-3 py-2 rounded-lg bg-card border border-border">
-                  {pattern}
+                { name: "Spanish Names", example: "DE LOS SANTOS, DEL RIO" },
+                { name: "Cultural Names", example: "VAN DER MEER, O'CONNOR" },
+                { name: "Generation Suffixes", example: "JR, SR, II, III" },
+                { name: "Business Indicators", example: "LLC, INC, CORP" },
+                { name: "Address Numbers", example: "12345, 67890" }
+              ].map((category) => (
+                <div key={category.name} className="p-3 rounded-lg bg-muted border">
+                  <p className="font-medium text-sm mb-1">{category.name}</p>
+                  <p className="text-xs text-muted-foreground font-mono">{category.example}</p>
                 </div>
               ))}
             </div>

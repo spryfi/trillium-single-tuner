@@ -1,4 +1,4 @@
-import { Code2 } from "lucide-react";
+import { Database } from "lucide-react";
 
 export const Header = () => {
   return (
@@ -6,11 +6,11 @@ export const Header = () => {
       <div className="container mx-auto px-4 h-16 flex items-center gap-3">
         <div className="flex items-center gap-2">
           <div className="p-2 rounded-lg bg-primary/10">
-            <Code2 className="w-6 h-6 text-primary" />
+            <Database className="w-6 h-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">CodeFix AI</h1>
-            <p className="text-xs text-muted-foreground">Modernize your legacy code</p>
+            <h1 className="text-xl font-bold">Trillium Pattern Analyzer</h1>
+            <p className="text-xs text-muted-foreground">Generate CLWDPAT patterns for v7.15</p>
           </div>
         </div>
       </div>
