@@ -41,62 +41,179 @@ export default function SingleTuner() {
     return !!correctParse.businessName;
   };
 
+  const extractParticles = (text: string): string[] => {
+    const particles = ['DE', 'DEL', 'LA', 'LAS', 'LOS', 'VAN', 'VON', 'DER', 'DEN'];
+    const words = text.split(' ');
+    return words.filter(word => particles.includes(word.toUpperCase()));
+  };
+
+  const extractBusinessTypes = (text: string): string[] => {
+    const types = ['LLC', 'INC', 'CORP', 'CORPORATION', 'LTD', 'LIMITED', 'CO', 'COMPANY'];
+    const words = text.split(' ');
+    return words.filter(word => types.includes(word.toUpperCase().replace(/[.,]/g, '')));
+  };
+
   const generatePatterns = () => {
     const patterns: string[] = [];
     const upperOriginal = originalParse.toUpperCase().trim();
+    const tokens = upperOriginal.split(/\s+/).filter(Boolean);
     
     patterns.push('*****************************************');
     patterns.push(`* Generated: ${new Date().toISOString().split('T')[0]}`);
     patterns.push(`* Original: ${upperOriginal}`);
     patterns.push('*****************************************');
+    patterns.push('');
     
     if (entityType === 'person') {
-      const first = correctParse.firstName?.toUpperCase() || '';
-      const last = correctParse.lastName?.toUpperCase() || '';
+      const firstName = correctParse.firstName?.toUpperCase() || '';
+      const lastName = correctParse.lastName?.toUpperCase() || '';
       
-      patterns.push(`'${upperOriginal}'    INS NAME DEF ATT=PERSON,FIRST='${first}',LAST='${last}'`);
+      // Check for Spanish/compound surnames
+      const particles = extractParticles(lastName);
       
-      const particles = ['DE', 'DEL', 'DE LA', 'DE LAS', 'DE LOS', 'VAN', 'VON', 'MAC', 'MC'];
-      if (particles.some(p => last.includes(p))) {
-        patterns.push(`'${last}'    INS NAME END ATT=LAST`);
-      }
-      
-      if (correctParse.generation) {
-        const gen = correctParse.generation.toUpperCase();
-        patterns.push(`'${last} ${gen}'    MOD NAME END ATT=PERSON,LAST='${last}',GEN='${gen}'`);
+      if (particles.length > 0) {
+        // Add WORDTYPE definitions for connector words
+        patterns.push('* Define connector words');
+        particles.forEach(particle => {
+          patterns.push(`'${particle}'     WORDTYPE CONNECT`);
+        });
+        patterns.push('');
+        
+        // Add exact surname pattern
+        patterns.push('* Exact surname match');
+        patterns.push(`'${lastName}'                  INS NAME DEF ATT=SRNM`);
+        patterns.push('');
+        
+        // Add pattern-based fallback
+        const lastNameTokens = lastName.split(' ');
+        const patternTokens = lastNameTokens.map(token => 
+          particles.includes(token) ? 'CONNECT' : 'ALPHA'
+        );
+        
+        patterns.push('* Pattern-based matching');
+        patterns.push(`'${patternTokens.join(' ')}' PATTERN NAME DEF`);
+        patterns.push(`REC='SRNM(1)'`);
+        patterns.push('');
+        
+        // If we have the full name, add exact match
+        if (firstName) {
+          patterns.push('* Full name exact match');
+          patterns.push(`'${upperOriginal}' PATTERN NAME DEF`);
+          patterns.push(`REC='GVN-NM1(1) SRNM(2-)'`);
+        }
+      } else {
+        // Simple name pattern
+        const tokenCount = tokens.length;
+        
+        if (tokenCount === 2) {
+          patterns.push('* First Last pattern');
+          patterns.push(`'ALPHA ALPHA' PATTERN NAME DEF`);
+          patterns.push(`REC='GVN-NM1(1) SRNM(2)'`);
+        } else if (tokenCount === 3 && correctParse.generation) {
+          patterns.push('* First Last Generation pattern');
+          patterns.push(`'ALPHA ALPHA ${correctParse.generation.toUpperCase()}' PATTERN NAME DEF`);
+          patterns.push(`REC='GVN-NM1(1) SRNM(2) GEN(3)'`);
+        } else {
+          patterns.push('* Exact match fallback');
+          patterns.push(`'${upperOriginal}' PATTERN NAME DEF`);
+          patterns.push(`REC='GVN-NM1(1) SRNM(2-)'`);
+        }
       }
     } else {
-      patterns.push(`'${upperOriginal}'    INS NAME DEF ATT=BUSINESS`);
+      // Business patterns use PATTERN MISC DEF
+      patterns.push('* Business pattern');
       
-      const indicators = ['LLC', 'INC', 'CORP', 'LTD', 'CO'];
-      indicators.forEach(ind => {
-        if (upperOriginal.includes(ind)) {
-          patterns.push(`'${ind}'    INS NAME END ATT=BUSINESS`);
-        }
-      });
+      const businessTypes = extractBusinessTypes(upperOriginal);
+      
+      if (businessTypes.length > 0) {
+        patterns.push('* Define business type indicators');
+        businessTypes.forEach(type => {
+          patterns.push(`'${type}'    WORDTYPE BUSTYPE`);
+        });
+        patterns.push('');
+        
+        const patternTokens = tokens.map(token => 
+          businessTypes.includes(token.replace(/[.,]/g, '')) ? 'BUSTYPE' : 'ALPHA'
+        );
+        
+        patterns.push(`'${patternTokens.join(' ')}' PATTERN MISC DEF`);
+        patterns.push(`REC='BRAND(1-${tokens.length - businessTypes.length}) CO-TYPE(${tokens.length - businessTypes.length + 1}-)'`);
+      } else {
+        patterns.push(`'${upperOriginal}' PATTERN MISC DEF`);
+        patterns.push(`REC='BRAND(1-)'`);
+      }
     }
     
     setClwdpatCode(patterns.join('\n'));
     
+    // Generate pfprsdrv.par configuration
+    const config: string[] = [];
+    config.push('****************************************************');
+    config.push('* Parser Configuration Updates for v7.15');
+    config.push(`* Generated: ${new Date().toISOString().split('T')[0]}`);
+    config.push('****************************************************');
+    config.push('');
+    
+    let needsConfig = false;
+    
+    // Check if we need JOIN_LINES for compound surnames
+    if (entityType === 'person' && correctParse.lastName) {
+      const particles = extractParticles(correctParse.lastName);
+      if (particles.length > 0) {
+        needsConfig = true;
+        config.push('* Add these JOIN_LINES directives to handle compound surnames');
+        config.push('JOIN_LINES  "DE","","LA",""');
+        config.push('           "DE","","LAS",""');
+        config.push('           "DE","","LOS",""');
+        config.push('           "DEL","","*",""');
+        config.push('           "VAN","","DER",""');
+        config.push('           "VAN","","DEN",""');
+        config.push('           "VON","","*",""');
+        config.push('');
+      }
+    }
+    
+    // Check if we need to adjust MAX_NUMB_NAMES
     const maxParts = parsedTokens.length;
     if (maxParts > 10) {
-      const config = [
-        '****************************************************',
-        '* Parser Configuration Updates Required',
-        '****************************************************',
-        '',
-        `MAX_NUMB_NAMES          ${Math.max(maxParts, 15)}`
-      ];
-      setParserCode(config.join('\n'));
-    } else {
-      setParserCode('');
+      needsConfig = true;
+      config.push('* Increase maximum name components');
+      config.push(`MAX_NUMB_NAMES          ${Math.min(maxParts + 2, 20)}`);
+      config.push('');
     }
+    
+    // Generation suffix handling
+    if (correctParse.generation) {
+      needsConfig = true;
+      config.push('* Join generation suffixes to prevent spacing');
+      config.push('JOIN_LINES  "*","","JR",""');
+      config.push('           "*","","SR",""');
+      config.push('           "*","","II",""');
+      config.push('           "*","","III",""');
+      config.push('');
+    }
+    
+    // Business indicator handling
+    if (entityType === 'business') {
+      const businessTypes = extractBusinessTypes(upperOriginal);
+      if (businessTypes.length > 0) {
+        needsConfig = true;
+        config.push('* Join business indicators');
+        config.push('JOIN_LINES  "*","","LLC",""');
+        config.push('           "*","","INC",""');
+        config.push('           "*","","INC.",""');
+        config.push('           "*","","CORP",""');
+        config.push('');
+      }
+    }
+    
+    setParserCode(needsConfig ? config.join('\n') : '');
     
     simulateResult(patterns);
     
     toast({
       title: "Patterns generated",
-      description: "CLWDPAT and parser configuration created"
+      description: "Using correct v7.15 syntax with PATTERN NAME DEF and WORDTYPE"
     });
   };
 
@@ -146,7 +263,7 @@ export default function SingleTuner() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Trillium v7.15 Single Tuner</h1>
           <p className="text-muted-foreground">
-            Fix parsing issues one record at a time with visual feedback
+            Fix parsing issues one record at a time using correct v7.15 PATTERN NAME DEF syntax
           </p>
         </div>
 
@@ -328,6 +445,16 @@ export default function SingleTuner() {
               <div className="mt-3 text-xs text-muted-foreground space-y-1">
                 <p>• Add to CLWDPAT file after line 106053 (Spanish entries section)</p>
                 <p>• Pattern precedence: Longer patterns match first</p>
+                <div className="mt-2 p-2 bg-primary/5 rounded text-xs">
+                  <p className="font-semibold mb-1">v7.15 Syntax Used:</p>
+                  <ul className="space-y-1">
+                    <li>• PATTERN NAME DEF - For person names with REC= position-based recoding</li>
+                    <li>• PATTERN MISC DEF - For business names</li>
+                    <li>• WORDTYPE CONNECT - For particles (DE, LA, LOS)</li>
+                    <li>• WORDTYPE BUSTYPE - For business indicators (LLC, INC)</li>
+                    <li>• INS NAME DEF ATT=SRNM - For exact surname matches</li>
+                  </ul>
+                </div>
               </div>
             )}
           </Card>
@@ -370,7 +497,8 @@ export default function SingleTuner() {
             {parserCode && (
               <div className="mt-3 text-xs text-muted-foreground space-y-1">
                 <p>• Update existing parameters in pfprsdrv.par</p>
-                <p>• Only shown if configuration changes needed</p>
+                <p>• JOIN_LINES directives are critical for compound surnames</p>
+                <p>• MAX_NUMB_NAMES may need adjustment for complex names</p>
               </div>
             )}
           </Card>
