@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Copy, Download } from 'lucide-react';
+import { Copy, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { simulatePatternParse, CLWDPATPattern } from '@/utils/parserSimulator';
+import { TRILLIUM_TOKEN_TYPES, TOKEN_MAP, getTokenType } from '@/utils/constants';
 
 interface ParsedName {
   prefix?: string;
@@ -18,6 +19,30 @@ interface ParsedName {
   businessName?: string;
 }
 
+interface TokenInfo {
+  text: string;
+  type: string;
+  isConnective: boolean;
+  isBusinessType: boolean;
+  isConjunction: boolean;
+}
+
+class TrilliumTokenizer {
+  tokenize(text: string): TokenInfo[] {
+    return text.toUpperCase().split(' ').filter(Boolean).map(word => {
+      const type = getTokenType(word);
+      return {
+        text: word,
+        type,
+        isConnective: type === TRILLIUM_TOKEN_TYPES.CONNECTIVE_PRIMARY || 
+                     type === TRILLIUM_TOKEN_TYPES.CONNECTIVE_COMPOUND,
+        isBusinessType: type === TRILLIUM_TOKEN_TYPES.BUSINESS_SUFFIX,
+        isConjunction: type === TRILLIUM_TOKEN_TYPES.CONJUNCTION
+      };
+    });
+  }
+}
+
 export default function SingleTuner() {
   const { toast } = useToast();
   const [entityType, setEntityType] = useState<'person' | 'business'>('person');
@@ -26,6 +51,7 @@ export default function SingleTuner() {
   const [clwdpatCode, setClwdpatCode] = useState('');
   const [parserCode, setParserCode] = useState('');
   const [parseResult, setParseResult] = useState<any>(null);
+  const [showTokenInfo, setShowTokenInfo] = useState(false);
 
   const parsedTokens = originalParse.trim().split(/\s+/).filter(Boolean);
 
@@ -54,9 +80,10 @@ export default function SingleTuner() {
   };
 
   const generatePatterns = () => {
+    const tokenizer = new TrilliumTokenizer();
     const patterns: string[] = [];
     const upperOriginal = originalParse.toUpperCase().trim();
-    const tokens = upperOriginal.split(/\s+/).filter(Boolean);
+    const tokens = tokenizer.tokenize(upperOriginal);
     
     patterns.push('*****************************************');
     patterns.push(`* Generated: ${new Date().toISOString().split('T')[0]}`);
@@ -67,146 +94,161 @@ export default function SingleTuner() {
     if (entityType === 'person') {
       const firstName = correctParse.firstName?.toUpperCase() || '';
       const lastName = correctParse.lastName?.toUpperCase() || '';
+      const lastNameTokens = tokenizer.tokenize(lastName);
       
-      // Check for Spanish/compound surnames
-      const particles = extractParticles(lastName);
-      
-      if (particles.length > 0) {
-        // Add WORDTYPE definitions for connector words
-        patterns.push('* Define connector words');
-        particles.forEach(particle => {
-          patterns.push(`'${particle}'     WORDTYPE CONNECT`);
+      if (lastNameTokens.some(t => t.isConnective)) {
+        patterns.push('* Define connector words with token types');
+        const connectors = lastNameTokens.filter(t => t.isConnective);
+        connectors.forEach(token => {
+          patterns.push(`'${token.text}'     WORDTYPE CONNECT`);
+          patterns.push(`* Token type: ${token.type}`);
         });
         patterns.push('');
         
-        // Add exact surname pattern
-        patterns.push('* Exact surname match');
         patterns.push(`'${lastName}'                  INS NAME DEF ATT=SRNM`);
         patterns.push('');
         
-        // Add pattern-based fallback
-        const lastNameTokens = lastName.split(' ');
         const patternTokens = lastNameTokens.map(token => 
-          particles.includes(token) ? 'CONNECT' : 'ALPHA'
-        );
+          token.isConnective ? 'CONNECT' : 'ALPHA'
+        ).join(' ');
         
-        patterns.push('* Pattern-based matching');
-        patterns.push(`'${patternTokens.join(' ')}' PATTERN NAME DEF`);
-        patterns.push(`REC='SRNM(1)'`);
+        patterns.push(`'${patternTokens}' PATTERN NAME DEF`);
+        patterns.push(`REC='SRNM(1-)'`);
         patterns.push('');
         
-        // If we have the full name, add exact match
-        if (firstName) {
-          patterns.push('* Full name exact match');
-          patterns.push(`'${upperOriginal}' PATTERN NAME DEF`);
-          patterns.push(`REC='GVN-NM1(1) SRNM(2-)'`);
-        }
+        const fullPattern = tokens.map((token, idx) => {
+          if (idx === 0) return 'ALPHA';
+          return token.isConnective ? 'CONNECT' : 'ALPHA';
+        }).join(' ');
+        
+        patterns.push(`'${fullPattern}' PATTERN NAME DEF`);
+        patterns.push(`REC='GVN-NM1(1) SRNM(2-)'`);
       } else {
-        // Simple name pattern
         const tokenCount = tokens.length;
         
         if (tokenCount === 2) {
-          patterns.push('* First Last pattern');
           patterns.push(`'ALPHA ALPHA' PATTERN NAME DEF`);
           patterns.push(`REC='GVN-NM1(1) SRNM(2)'`);
-        } else if (tokenCount === 3 && correctParse.generation) {
-          patterns.push('* First Last Generation pattern');
-          patterns.push(`'ALPHA ALPHA ${correctParse.generation.toUpperCase()}' PATTERN NAME DEF`);
-          patterns.push(`REC='GVN-NM1(1) SRNM(2) GEN(3)'`);
+        } else if (tokenCount === 3) {
+          patterns.push(`'ALPHA ALPHA ALPHA' PATTERN NAME DEF`);
+          patterns.push(`REC='GVN-NM1(1) SRNM(2-)'`);
         } else {
-          patterns.push('* Exact match fallback');
-          patterns.push(`'${upperOriginal}' PATTERN NAME DEF`);
+          patterns.push(`'${'ALPHA '.repeat(tokenCount).trim()}' PATTERN NAME DEF`);
           patterns.push(`REC='GVN-NM1(1) SRNM(2-)'`);
         }
+        
+        patterns.push('');
+        patterns.push(`'${upperOriginal}' PATTERN NAME DEF`);
+        patterns.push(`REC='GVN-NM1(1) SRNM(2-)'`);
       }
     } else {
-      // Business patterns use PATTERN MISC DEF
-      patterns.push('* Business pattern');
+      patterns.push(`'${upperOriginal}' PATTERN MISC DEF`);
+      patterns.push(`REC='BRAND(1-)'`);
+      patterns.push('');
       
-      const businessTypes = extractBusinessTypes(upperOriginal);
-      
-      if (businessTypes.length > 0) {
-        patterns.push('* Define business type indicators');
-        businessTypes.forEach(type => {
-          patterns.push(`'${type}'    WORDTYPE BUSTYPE`);
+      const businessTokens = tokens.filter(t => t.isBusinessType);
+      if (businessTokens.length > 0) {
+        businessTokens.forEach(token => {
+          patterns.push(`'${token.text}'    WORDTYPE BUSTYPE`);
+          patterns.push(`* Token type: ${token.type}`);
         });
         patterns.push('');
         
-        const patternTokens = tokens.map(token => 
-          businessTypes.includes(token.replace(/[.,]/g, '')) ? 'BUSTYPE' : 'ALPHA'
-        );
+        const bizPattern = tokens.map(token => 
+          token.isBusinessType ? 'BUSTYPE' : 'ALPHA'
+        ).join(' ');
         
-        patterns.push(`'${patternTokens.join(' ')}' PATTERN MISC DEF`);
-        patterns.push(`REC='BRAND(1-${tokens.length - businessTypes.length}) CO-TYPE(${tokens.length - businessTypes.length + 1}-)'`);
-      } else {
-        patterns.push(`'${upperOriginal}' PATTERN MISC DEF`);
-        patterns.push(`REC='BRAND(1-)'`);
+        patterns.push(`'${bizPattern}' PATTERN MISC DEF`);
+        
+        const brandEndPos = tokens.findIndex(t => t.isBusinessType);
+        if (brandEndPos > 0) {
+          patterns.push(`REC='BRAND(1-${brandEndPos}) CO-TYPE(${brandEndPos + 1}-)'`);
+        }
       }
     }
     
     setClwdpatCode(patterns.join('\n'));
     
-    // Generate pfprsdrv.par configuration
+    // Generate pfprsdrv.par configuration with token types
     const config: string[] = [];
     config.push('****************************************************');
     config.push('* Parser Configuration Updates for v7.15');
     config.push(`* Generated: ${new Date().toISOString().split('T')[0]}`);
+    config.push('* With proper token type codes');
     config.push('****************************************************');
     config.push('');
     
     let needsConfig = false;
     
-    // Check if we need JOIN_LINES for compound surnames
     if (entityType === 'person' && correctParse.lastName) {
-      const particles = extractParticles(correctParse.lastName);
-      if (particles.length > 0) {
+      const lastNameTokens = tokenizer.tokenize(correctParse.lastName);
+      const hasConnectives = lastNameTokens.some(t => t.isConnective);
+      
+      if (hasConnectives) {
         needsConfig = true;
-        config.push('* Add these JOIN_LINES directives to handle compound surnames');
-        config.push('JOIN_LINES  "DE","","LA",""');
-        config.push('           "DE","","LAS",""');
-        config.push('           "DE","","LOS",""');
-        config.push('           "DEL","","*",""');
-        config.push('           "VAN","","DER",""');
-        config.push('           "VAN","","DEN",""');
-        config.push('           "VON","","*",""');
+        config.push('* JOIN_LINES directives with token codes');
+        config.push('* Format: "word1","token_code1","word2","token_code2"');
         config.push('');
+        
+        lastNameTokens.forEach((token, idx) => {
+          if (token.isConnective && idx < lastNameTokens.length - 1) {
+            const nextToken = lastNameTokens[idx + 1];
+            
+            if (nextToken.isConnective) {
+              config.push(`JOIN_LINES  "${token.text}","${token.type}","${nextToken.text}","${nextToken.type}"`);
+            } else {
+              config.push(`JOIN_LINES  "${token.text}","${token.type}","*","${TRILLIUM_TOKEN_TYPES.ALPHA}"`);
+            }
+          }
+        });
+        
+        config.push('');
+        config.push('* Wildcard patterns for flexibility');
+        const uniqueConnectives = [...new Set(
+          lastNameTokens.filter(t => t.isConnective).map(t => t.text)
+        )];
+        
+        uniqueConnectives.forEach(conn => {
+          config.push(`JOIN_LINES  "*","","${conn}",""`);
+        });
+        
+        config.push('');
+        config.push('* Patterns for tokens preceding connectives');
+        uniqueConnectives.forEach(conn => {
+          const tokenType = getTokenType(conn);
+          config.push(`JOIN_LINES  "*","${TRILLIUM_TOKEN_TYPES.ALPHA}","${conn}","${tokenType}"`);
+        });
       }
     }
     
-    // Check if we need to adjust MAX_NUMB_NAMES
-    const maxParts = parsedTokens.length;
-    if (maxParts > 10) {
-      needsConfig = true;
-      config.push('* Increase maximum name components');
-      config.push(`MAX_NUMB_NAMES          ${Math.min(maxParts + 2, 20)}`);
-      config.push('');
-    }
-    
-    // Generation suffix handling
     if (correctParse.generation) {
       needsConfig = true;
-      config.push('* Join generation suffixes to prevent spacing');
-      config.push('JOIN_LINES  "*","","JR",""');
-      config.push('           "*","","SR",""');
-      config.push('           "*","","II",""');
-      config.push('           "*","","III",""');
       config.push('');
+      config.push('* Generation suffix handling');
+      config.push(`JOIN_LINES  "*","${TRILLIUM_TOKEN_TYPES.ALPHA}","${correctParse.generation.toUpperCase()}",""`);
+      config.push(`JOIN_LINES  "*","${TRILLIUM_TOKEN_TYPES.PUNCTUATION}","${correctParse.generation.toUpperCase()}",""`);
     }
     
-    // Business indicator handling
     if (entityType === 'business') {
-      const businessTypes = extractBusinessTypes(upperOriginal);
-      if (businessTypes.length > 0) {
+      const businessTokens = tokens.filter(t => t.isBusinessType);
+      if (businessTokens.length > 0) {
         needsConfig = true;
-        config.push('* Join business indicators');
-        config.push('JOIN_LINES  "*","","LLC",""');
-        config.push('           "*","","INC",""');
-        config.push('           "*","","INC.",""');
-        config.push('           "*","","CORP",""');
         config.push('');
+        config.push('* Business suffix handling');
+        businessTokens.forEach(token => {
+          config.push(`JOIN_LINES  "*","${TRILLIUM_TOKEN_TYPES.ALPHA}","${token.text}","${token.type}"`);
+        });
       }
     }
     
+    if (tokens.length > 10) {
+      needsConfig = true;
+      config.push('');
+      config.push('* Increase maximum name components');
+      config.push(`MAX_NUMB_NAMES          ${Math.min(tokens.length + 5, 20)}`);
+    }
+    
+    config.push('');
     setParserCode(needsConfig ? config.join('\n') : '');
     
     simulateResult(patterns);
@@ -259,13 +301,65 @@ export default function SingleTuner() {
 
   return (
     <div className="min-h-screen bg-background p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div>
           <h1 className="text-3xl font-bold mb-2">Trillium v7.15 Single Tuner</h1>
           <p className="text-muted-foreground">
             Fix parsing issues one record at a time using correct v7.15 PATTERN NAME DEF syntax
           </p>
         </div>
+
+        {/* Token Type Reference Panel */}
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg">Token Type Reference</CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowTokenInfo(!showTokenInfo)}
+              >
+                {showTokenInfo ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </div>
+            <CardDescription>
+              Trillium v7.15 token type codes for precise parsing control
+            </CardDescription>
+          </CardHeader>
+          
+          {showTokenInfo && (
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-primary">Name Particles</h4>
+                  <div className="space-y-1 text-muted-foreground">
+                    <div>DE, LA, LOS, LAS: <code className="bg-muted px-1.5 py-0.5 rounded">174</code></div>
+                    <div>DEL, DI, DA, DO: <code className="bg-muted px-1.5 py-0.5 rounded">175</code></div>
+                    <div>VAN, VON, DER: <code className="bg-muted px-1.5 py-0.5 rounded">174</code></div>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-primary">Business Types</h4>
+                  <div className="space-y-1 text-muted-foreground">
+                    <div>LLC, INC, CORP: <code className="bg-muted px-1.5 py-0.5 rounded">059</code></div>
+                    <div>LTD, CO, COMPANY: <code className="bg-muted px-1.5 py-0.5 rounded">059</code></div>
+                    <div>AND, &, OF: <code className="bg-muted px-1.5 py-0.5 rounded">058</code></div>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-primary">Core Types</h4>
+                  <div className="space-y-1 text-muted-foreground">
+                    <div>Regular word: <code className="bg-muted px-1.5 py-0.5 rounded">049</code></div>
+                    <div>Numbers: <code className="bg-muted px-1.5 py-0.5 rounded">050</code></div>
+                    <div>Punctuation: <code className="bg-muted px-1.5 py-0.5 rounded">051</code></div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          )}
+        </Card>
 
         {/* Entity Type Selection */}
         <Card className="p-6 mb-6">
@@ -448,11 +542,11 @@ export default function SingleTuner() {
                 <div className="mt-2 p-2 bg-primary/5 rounded text-xs">
                   <p className="font-semibold mb-1">v7.15 Syntax Used:</p>
                   <ul className="space-y-1">
-                    <li>• PATTERN NAME DEF - For person names with REC= position-based recoding</li>
-                    <li>• PATTERN MISC DEF - For business names</li>
-                    <li>• WORDTYPE CONNECT - For particles (DE, LA, LOS)</li>
-                    <li>• WORDTYPE BUSTYPE - For business indicators (LLC, INC)</li>
-                    <li>• INS NAME DEF ATT=SRNM - For exact surname matches</li>
+                    <li>• PATTERN NAME DEF - Person name patterns with position-based recoding</li>
+                    <li>• PATTERN MISC DEF - Business name patterns</li>
+                    <li>• WORDTYPE CONNECT - Particle definitions (DE, LA, LOS)</li>
+                    <li>• REC='GVN-NM1(1) SRNM(2-)' - Token position assignments</li>
+                    <li>• Token type codes shown in comments for JOIN_LINES reference</li>
                   </ul>
                 </div>
               </div>
@@ -497,8 +591,13 @@ export default function SingleTuner() {
             {parserCode && (
               <div className="mt-3 text-xs text-muted-foreground space-y-1">
                 <p>• Update existing parameters in pfprsdrv.par</p>
-                <p>• JOIN_LINES directives are critical for compound surnames</p>
-                <p>• MAX_NUMB_NAMES may need adjustment for complex names</p>
+                <div className="mt-2 p-2 bg-amber-100 dark:bg-amber-900/20 rounded">
+                  <p className="font-semibold mb-1">JOIN_LINES Format:</p>
+                  <code className="text-xs">"word1","token_code1","word2","token_code2"</code>
+                  <p className="mt-1">
+                    Token codes ensure proper parsing precedence in v7.15
+                  </p>
+                </div>
               </div>
             )}
           </Card>
