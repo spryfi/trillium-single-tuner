@@ -9,6 +9,14 @@ import { BatchTest } from "@/components/BatchTest";
 import { EffectivenessDashboard } from "@/components/EffectivenessDashboard";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { analyzeRecords } from "@/utils/patternDetection";
 import { generateCLWDPAT, generateParserConfig, generateImplementationReport, calculateStats } from "@/utils/outputGeneration";
 import { 
@@ -118,6 +126,18 @@ const Index = () => {
       <Header />
 
       <main className="container mx-auto px-4 py-8">
+        <Breadcrumb className="mb-6">
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/">Home</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>Batch Analyzer</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+        
         <div className="max-w-7xl mx-auto space-y-8">
           {/* Header Section */}
           <div className="text-center space-y-2">

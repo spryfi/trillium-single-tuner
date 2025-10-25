@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Header } from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +10,14 @@ import { Copy, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { simulatePatternParse, CLWDPATPattern } from '@/utils/parserSimulator';
 import { TRILLIUM_TOKEN_TYPES, TOKEN_MAP, getTokenType } from '@/utils/constants';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 
 interface ParsedName {
   prefix?: string;
@@ -315,14 +324,29 @@ export default function SingleTuner() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Trillium v7.15 Single Tuner</h1>
-          <p className="text-muted-foreground">
-            Fix parsing issues one record at a time using correct v7.15 PATTERN NAME DEF syntax
-          </p>
-        </div>
+    <div className="min-h-screen bg-background">
+      <Header />
+      
+      <main className="container mx-auto px-4 py-6">
+        <Breadcrumb className="mb-6">
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink href="/">Home</BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>Single Tuner</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+        
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Trillium v7.15 Single Tuner</h1>
+            <p className="text-muted-foreground">
+              Fix parsing issues one record at a time using correct v7.15 PATTERN NAME DEF syntax
+            </p>
+          </div>
 
         {/* Token Type Reference Panel */}
         <Card className="border-primary/20 bg-primary/5">
@@ -716,7 +740,8 @@ export default function SingleTuner() {
             </div>
           </Card>
         )}
-      </div>
+        </div>
+      </main>
     </div>
   );
 }
