@@ -97,11 +97,10 @@ export default function SingleTuner() {
       const lastNameTokens = tokenizer.tokenize(lastName);
       
       if (lastNameTokens.some(t => t.isConnective)) {
-        patterns.push('* Define connector words with token types');
+        patterns.push('* Define connector words');
         const connectors = lastNameTokens.filter(t => t.isConnective);
         connectors.forEach(token => {
           patterns.push(`'${token.text}'     WORDTYPE CONNECT`);
-          patterns.push(`* Token type: ${token.type}`);
         });
         patterns.push('');
         
@@ -116,22 +115,36 @@ export default function SingleTuner() {
         patterns.push(`REC='SRNM(1-)'`);
         patterns.push('');
         
-        const fullPattern = tokens.map((token, idx) => {
-          if (idx === 0) return 'ALPHA';
-          return token.isConnective ? 'CONNECT' : 'ALPHA';
-        }).join(' ');
-        
-        patterns.push(`'${fullPattern}' PATTERN NAME DEF`);
-        patterns.push(`REC='GVN-NM1(1) SRNM(2-)'`);
+        if (firstName) {
+          const firstNameTokens = tokenizer.tokenize(firstName);
+          const firstNameLength = firstNameTokens.length;
+          
+          const fullPattern = tokens.map((token, idx) => {
+            if (idx < firstNameLength) return 'ALPHA';
+            return token.isConnective ? 'CONNECT' : 'ALPHA';
+          }).join(' ');
+          
+          patterns.push(`'${fullPattern}' PATTERN NAME DEF`);
+          
+          if (firstNameLength === 1) {
+            patterns.push(`REC='GVN-NM1(1) SRNM(2-)'`);
+          } else {
+            patterns.push(`REC='GVN-NM1(1-${firstNameLength}) SRNM(${firstNameLength + 1}-)'`);
+          }
+        }
       } else {
         const tokenCount = tokens.length;
+        const firstNameLength = tokenizer.tokenize(firstName).length || 1;
         
         if (tokenCount === 2) {
           patterns.push(`'ALPHA ALPHA' PATTERN NAME DEF`);
           patterns.push(`REC='GVN-NM1(1) SRNM(2)'`);
-        } else if (tokenCount === 3) {
+        } else if (tokenCount === 3 && correctParse.middle) {
           patterns.push(`'ALPHA ALPHA ALPHA' PATTERN NAME DEF`);
-          patterns.push(`REC='GVN-NM1(1) SRNM(2-)'`);
+          patterns.push(`REC='GVN-NM1(1) GVN-NM2(2) SRNM(3)'`);
+        } else if (firstNameLength > 1) {
+          patterns.push(`'${'ALPHA '.repeat(tokenCount).trim()}' PATTERN NAME DEF`);
+          patterns.push(`REC='GVN-NM1(1-${firstNameLength}) SRNM(${firstNameLength + 1}-)'`);
         } else {
           patterns.push(`'${'ALPHA '.repeat(tokenCount).trim()}' PATTERN NAME DEF`);
           patterns.push(`REC='GVN-NM1(1) SRNM(2-)'`);
@@ -143,14 +156,13 @@ export default function SingleTuner() {
       }
     } else {
       patterns.push(`'${upperOriginal}' PATTERN MISC DEF`);
-      patterns.push(`REC='BRAND(1-)'`);
+      patterns.push(`RECODE='BRAND(1-)'`);
       patterns.push('');
       
       const businessTokens = tokens.filter(t => t.isBusinessType);
       if (businessTokens.length > 0) {
         businessTokens.forEach(token => {
           patterns.push(`'${token.text}'    WORDTYPE BUSTYPE`);
-          patterns.push(`* Token type: ${token.type}`);
         });
         patterns.push('');
         
@@ -162,7 +174,9 @@ export default function SingleTuner() {
         
         const brandEndPos = tokens.findIndex(t => t.isBusinessType);
         if (brandEndPos > 0) {
-          patterns.push(`REC='BRAND(1-${brandEndPos}) CO-TYPE(${brandEndPos + 1}-)'`);
+          patterns.push(`RECODE='BRAND(1-${brandEndPos}) CO-TYPE(${brandEndPos + 1}-)'`);
+        } else {
+          patterns.push(`RECODE='BRAND(1-)'`);
         }
       }
     }
@@ -186,10 +200,28 @@ export default function SingleTuner() {
       
       if (hasConnectives) {
         needsConfig = true;
-        config.push('* JOIN_LINES directives with token codes');
+        config.push('* JOIN_LINES directives (general to specific order)');
         config.push('* Format: "word1","token_code1","word2","token_code2"');
         config.push('');
         
+        const uniqueConnectives = [...new Set(
+          lastNameTokens.filter(t => t.isConnective).map(t => t.text)
+        )];
+        
+        config.push('* General wildcard patterns (lowest priority)');
+        uniqueConnectives.forEach(conn => {
+          config.push(`JOIN_LINES  "*","","${conn}",""`);
+        });
+        
+        config.push('');
+        config.push('* Alpha + connective patterns (medium priority)');
+        uniqueConnectives.forEach(conn => {
+          const tokenType = getTokenType(conn);
+          config.push(`JOIN_LINES  "*","${TRILLIUM_TOKEN_TYPES.ALPHA}","${conn}","${tokenType}"`);
+        });
+        
+        config.push('');
+        config.push('* Specific combinations (highest priority - processed last)');
         lastNameTokens.forEach((token, idx) => {
           if (token.isConnective && idx < lastNameTokens.length - 1) {
             const nextToken = lastNameTokens[idx + 1];
@@ -200,23 +232,6 @@ export default function SingleTuner() {
               config.push(`JOIN_LINES  "${token.text}","${token.type}","*","${TRILLIUM_TOKEN_TYPES.ALPHA}"`);
             }
           }
-        });
-        
-        config.push('');
-        config.push('* Wildcard patterns for flexibility');
-        const uniqueConnectives = [...new Set(
-          lastNameTokens.filter(t => t.isConnective).map(t => t.text)
-        )];
-        
-        uniqueConnectives.forEach(conn => {
-          config.push(`JOIN_LINES  "*","","${conn}",""`);
-        });
-        
-        config.push('');
-        config.push('* Patterns for tokens preceding connectives');
-        uniqueConnectives.forEach(conn => {
-          const tokenType = getTokenType(conn);
-          config.push(`JOIN_LINES  "*","${TRILLIUM_TOKEN_TYPES.ALPHA}","${conn}","${tokenType}"`);
         });
       }
     }
@@ -542,11 +557,11 @@ export default function SingleTuner() {
                 <div className="mt-2 p-2 bg-primary/5 rounded text-xs">
                   <p className="font-semibold mb-1">v7.15 Syntax Used:</p>
                   <ul className="space-y-1">
-                    <li>• PATTERN NAME DEF - Person name patterns with position-based recoding</li>
-                    <li>• PATTERN MISC DEF - Business name patterns</li>
+                    <li>• PATTERN NAME DEF uses REC= (person names)</li>
+                    <li>• PATTERN MISC DEF uses RECODE= (business names)</li>
                     <li>• WORDTYPE CONNECT - Particle definitions (DE, LA, LOS)</li>
-                    <li>• REC='GVN-NM1(1) SRNM(2-)' - Token position assignments</li>
-                    <li>• Token type codes shown in comments for JOIN_LINES reference</li>
+                    <li>• REC='GVN-NM1(1-2) SRNM(3-)' - Multi-word first names supported</li>
+                    <li>• Longer patterns match first</li>
                   </ul>
                 </div>
               </div>
@@ -592,10 +607,10 @@ export default function SingleTuner() {
               <div className="mt-3 text-xs text-muted-foreground space-y-1">
                 <p>• Update existing parameters in pfprsdrv.par</p>
                 <div className="mt-2 p-2 bg-amber-100 dark:bg-amber-900/20 rounded">
-                  <p className="font-semibold mb-1">JOIN_LINES Format:</p>
+                  <p className="font-semibold mb-1">JOIN_LINES Order:</p>
                   <code className="text-xs">"word1","token_code1","word2","token_code2"</code>
                   <p className="mt-1">
-                    Token codes ensure proper parsing precedence in v7.15
+                    General patterns first → Specific patterns last (last rule wins)
                   </p>
                 </div>
               </div>
