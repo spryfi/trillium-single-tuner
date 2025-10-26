@@ -3,13 +3,31 @@ import { Header } from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Copy, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { simulatePatternParse, CLWDPATPattern } from '@/utils/parserSimulator';
 import { TRILLIUM_TOKEN_TYPES, TOKEN_MAP, getTokenType } from '@/utils/constants';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { 
+  Sparkles, 
+  Wand2, 
+  CheckCircle2, 
+  AlertCircle, 
+  History, 
+  Save, 
+  Download, 
+  Copy,
+  Plus,
+  Search,
+  Clock,
+  FileText
+} from 'lucide-react';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -26,6 +44,29 @@ interface ParsedName {
   lastName?: string;
   generation?: string;
   businessName?: string;
+  businessSuffix?: string;
+  businessKeyTerms?: string;
+}
+
+interface Address {
+  badAddress?: string;
+  houseNumber?: string;
+  street?: string;
+  streetType?: string;
+  unit?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+}
+
+interface TuneHistory {
+  id: string;
+  date: string;
+  entityType: 'person' | 'business' | 'address';
+  original: string;
+  status: 'draft' | 'validated' | 'needs-review' | 'auto-qc-passed';
+  description: string;
 }
 
 interface TokenInfo {
@@ -54,38 +95,83 @@ class TrilliumTokenizer {
 
 export default function SingleTuner() {
   const { toast } = useToast();
-  const [entityType, setEntityType] = useState<'person' | 'business'>('person');
+  const [entityType, setEntityType] = useState<'person' | 'business' | 'address'>('person');
   const [originalParse, setOriginalParse] = useState('');
+  const [parseErrorDescription, setParseErrorDescription] = useState('');
   const [correctParse, setCorrectParse] = useState<ParsedName>({});
+  const [address, setAddress] = useState<Address>({});
   const [clwdpatCode, setClwdpatCode] = useState('');
   const [parserCode, setParserCode] = useState('');
+  const [summaryCode, setSummaryCode] = useState('');
   const [parseResult, setParseResult] = useState<any>(null);
-  const [showTokenInfo, setShowTokenInfo] = useState(false);
-
-  const parsedTokens = originalParse.trim().split(/\s+/).filter(Boolean);
+  const [validationStatus, setValidationStatus] = useState<'draft' | 'validated' | 'needs-review' | 'auto-qc-passed'>('draft');
+  const [history, setHistory] = useState<TuneHistory[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [searchHistory, setSearchHistory] = useState('');
 
   const updateCorrectParse = (field: keyof ParsedName, value: string) => {
     setCorrectParse(prev => ({ ...prev, [field]: value }));
+  };
+
+  const updateAddress = (field: keyof Address, value: string) => {
+    setAddress(prev => ({ ...prev, [field]: value }));
   };
 
   const isValidInput = () => {
     if (!originalParse.trim()) return false;
     if (entityType === 'person') {
       return !!(correctParse.firstName && correctParse.lastName);
+    } else if (entityType === 'business') {
+      return !!correctParse.businessName;
+    } else if (entityType === 'address') {
+      return !!(address.badAddress || address.street);
     }
-    return !!correctParse.businessName;
+    return false;
   };
 
-  const extractParticles = (text: string): string[] => {
-    const particles = ['DE', 'DEL', 'LA', 'LAS', 'LOS', 'VAN', 'VON', 'DER', 'DEN'];
-    const words = text.split(' ');
-    return words.filter(word => particles.includes(word.toUpperCase()));
+  const handleAISuggest = () => {
+    toast({
+      title: "AI Suggestion",
+      description: "AI pattern suggestion will be implemented with backend integration"
+    });
+    
+    // Mock AI suggestion for demo
+    if (entityType === 'person' && originalParse.includes('DE')) {
+      const parts = originalParse.split(' ');
+      if (parts.length >= 3) {
+        setCorrectParse({
+          firstName: parts[0],
+          lastName: parts.slice(1).join(' ')
+        });
+        toast({
+          title: "AI Detected",
+          description: "Compound surname with particle detected"
+        });
+      }
+    }
   };
 
-  const extractBusinessTypes = (text: string): string[] => {
-    const types = ['LLC', 'INC', 'CORP', 'CORPORATION', 'LTD', 'LIMITED', 'CO', 'COMPANY'];
-    const words = text.split(' ');
-    return words.filter(word => types.includes(word.toUpperCase().replace(/[.,]/g, '')));
+  const handleAutoFix = () => {
+    if (entityType === 'address' && address.badAddress) {
+      // Mock address parsing
+      const parts = address.badAddress.split(/[\s,]+/);
+      const houseNum = parts[0]?.match(/^\d+/) ? parts[0] : '';
+      const streetParts = parts.slice(houseNum ? 1 : 0);
+      
+      setAddress(prev => ({
+        ...prev,
+        houseNumber: houseNum,
+        street: streetParts.slice(0, -3).join(' '),
+        city: streetParts[streetParts.length - 3] || '',
+        state: streetParts[streetParts.length - 2] || '',
+        zip: streetParts[streetParts.length - 1] || ''
+      }));
+      
+      toast({
+        title: "Auto-Fixed",
+        description: "Address parsed automatically"
+      });
+    }
   };
 
   const generatePatterns = () => {
@@ -97,6 +183,7 @@ export default function SingleTuner() {
     patterns.push('*****************************************');
     patterns.push(`* Generated: ${new Date().toISOString().split('T')[0]}`);
     patterns.push(`* Original: ${upperOriginal}`);
+    patterns.push(`* Entity: ${entityType.toUpperCase()}`);
     patterns.push('*****************************************');
     patterns.push('');
     
@@ -163,7 +250,7 @@ export default function SingleTuner() {
         patterns.push(`'${upperOriginal}' PATTERN NAME DEF`);
         patterns.push(`REC='GVN-NM1(1) SRNM(2-)'`);
       }
-    } else {
+    } else if (entityType === 'business') {
       patterns.push(`'${upperOriginal}' PATTERN MISC DEF`);
       patterns.push(`RECODE='BRAND(1-)'`);
       patterns.push('');
@@ -188,16 +275,23 @@ export default function SingleTuner() {
           patterns.push(`RECODE='BRAND(1-)'`);
         }
       }
+    } else if (entityType === 'address') {
+      patterns.push('* Address parsing patterns');
+      patterns.push('* Add address-specific CLWDPAT rules here');
+      patterns.push('');
+      
+      if (address.streetType) {
+        patterns.push(`'${address.streetType.toUpperCase()}'    WORDTYPE ADDRTYPE`);
+      }
     }
     
     setClwdpatCode(patterns.join('\n'));
     
-    // Generate pfprsdrv.par configuration with token types
+    // Generate parser config
     const config: string[] = [];
     config.push('****************************************************');
     config.push('* Parser Configuration Updates for v7.15');
     config.push(`* Generated: ${new Date().toISOString().split('T')[0]}`);
-    config.push('* With proper token type codes');
     config.push('****************************************************');
     config.push('');
     
@@ -210,7 +304,6 @@ export default function SingleTuner() {
       if (hasConnectives) {
         needsConfig = true;
         config.push('* JOIN_LINES directives (general to specific order)');
-        config.push('* Format: "word1","token_code1","word2","token_code2"');
         config.push('');
         
         const uniqueConnectives = [...new Set(
@@ -230,7 +323,7 @@ export default function SingleTuner() {
         });
         
         config.push('');
-        config.push('* Specific combinations (highest priority - processed last)');
+        config.push('* Specific combinations (highest priority)');
         lastNameTokens.forEach((token, idx) => {
           if (token.isConnective && idx < lastNameTokens.length - 1) {
             const nextToken = lastNameTokens[idx + 1];
@@ -245,64 +338,68 @@ export default function SingleTuner() {
       }
     }
     
-    if (correctParse.generation) {
-      needsConfig = true;
-      config.push('');
-      config.push('* Generation suffix handling');
-      config.push(`JOIN_LINES  "*","${TRILLIUM_TOKEN_TYPES.ALPHA}","${correctParse.generation.toUpperCase()}",""`);
-      config.push(`JOIN_LINES  "*","${TRILLIUM_TOKEN_TYPES.PUNCTUATION}","${correctParse.generation.toUpperCase()}",""`);
-    }
-    
-    if (entityType === 'business') {
-      const businessTokens = tokens.filter(t => t.isBusinessType);
-      if (businessTokens.length > 0) {
-        needsConfig = true;
-        config.push('');
-        config.push('* Business suffix handling');
-        businessTokens.forEach(token => {
-          config.push(`JOIN_LINES  "*","${TRILLIUM_TOKEN_TYPES.ALPHA}","${token.text}","${token.type}"`);
-        });
-      }
-    }
-    
-    if (tokens.length > 10) {
-      needsConfig = true;
-      config.push('');
-      config.push('* Increase maximum name components');
-      config.push(`MAX_NUMB_NAMES          ${Math.min(tokens.length + 5, 20)}`);
-    }
-    
     config.push('');
     setParserCode(needsConfig ? config.join('\n') : '');
     
-    simulateResult(patterns);
+    // Generate summary
+    const summary: string[] = [];
+    summary.push('IMPLEMENTATION SUMMARY');
+    summary.push('======================');
+    summary.push('');
+    summary.push(`Entity Type: ${entityType.toUpperCase()}`);
+    summary.push(`Original Input: ${originalParse}`);
+    summary.push(`Parse Error: ${parseErrorDescription || 'Not specified'}`);
+    summary.push('');
+    summary.push('Changes Applied:');
+    summary.push(`- CLWDPAT patterns: ${patterns.filter(p => p.includes('PATTERN')).length} rules`);
+    summary.push(`- Parser config: ${needsConfig ? 'Required' : 'Not needed'}`);
+    summary.push(`- Token types used: ${tokens.length} tokens analyzed`);
+    summary.push('');
+    summary.push('Next Steps:');
+    summary.push('1. Copy CLWDPAT patterns to production file');
+    summary.push('2. Update pfprsdrv.par with JOIN_LINES directives');
+    summary.push('3. Test in Trillium v7.15 environment');
+    summary.push('4. Validate parsing results');
+    
+    setSummaryCode(summary.join('\n'));
+    
+    setValidationStatus('needs-review');
     
     toast({
       title: "Patterns generated",
-      description: "Using correct v7.15 syntax with PATTERN NAME DEF and WORDTYPE"
+      description: "Review the output tabs for CLWDPAT and parser configuration"
     });
   };
 
-  const simulateResult = (patterns: string[]) => {
-    const clwdpatPatterns: CLWDPATPattern[] = patterns
-      .filter(line => line.startsWith("'"))
-      .map(line => {
-        const match = line.match(/^'([^']+)'\s+(INS NAME|MOD NAME)\s+(DEF|END|BEG|MID)\s+(.+)$/);
-        if (match) {
-          return {
-            pattern: match[1],
-            command: match[2] as CLWDPATPattern['command'],
-            type: match[3] as CLWDPATPattern['type'],
-            attributes: match[4],
-            original: line
-          };
-        }
-        return null;
-      })
-      .filter(Boolean) as CLWDPATPattern[];
+  const handleSave = () => {
+    const newTune: TuneHistory = {
+      id: Date.now().toString(),
+      date: new Date().toISOString(),
+      entityType,
+      original: originalParse,
+      status: validationStatus,
+      description: parseErrorDescription || `${entityType} parsing fix`
+    };
+    
+    setHistory(prev => [newTune, ...prev]);
+    
+    toast({
+      title: "Tune saved",
+      description: "Added to history"
+    });
+  };
 
-    const result = simulatePatternParse(originalParse, clwdpatPatterns);
-    setParseResult(result);
+  const loadFromHistory = (tune: TuneHistory) => {
+    setEntityType(tune.entityType);
+    setOriginalParse(tune.original);
+    setParseErrorDescription(tune.description);
+    setValidationStatus(tune.status);
+    setHistoryOpen(false);
+    
+    toast({
+      title: "Loaded from history",
+      description: `Tune from ${new Date(tune.date).toLocaleDateString()}`
+    });
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -323,11 +420,39 @@ export default function SingleTuner() {
     URL.revokeObjectURL(url);
   };
 
+  const filteredHistory = history.filter(h => 
+    h.original.toLowerCase().includes(searchHistory.toLowerCase()) ||
+    h.description.toLowerCase().includes(searchHistory.toLowerCase())
+  );
+
+  const getStatusBadge = (status: typeof validationStatus) => {
+    const styles = {
+      draft: 'bg-gray-100 text-gray-800',
+      'needs-review': 'bg-yellow-100 text-yellow-800',
+      validated: 'bg-green-100 text-green-800',
+      'auto-qc-passed': 'bg-blue-100 text-blue-800'
+    };
+    
+    const icons = {
+      draft: <FileText className="w-3 h-3" />,
+      'needs-review': <AlertCircle className="w-3 h-3" />,
+      validated: <CheckCircle2 className="w-3 h-3" />,
+      'auto-qc-passed': <CheckCircle2 className="w-3 h-3" />
+    };
+    
+    return (
+      <Badge className={styles[status]}>
+        {icons[status]}
+        <span className="ml-1">{status.replace('-', ' ').toUpperCase()}</span>
+      </Badge>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
       
-      <main className="container mx-auto px-4 py-6">
+      <main className="container mx-auto px-4 py-6 max-w-7xl">
         <Breadcrumb className="mb-6">
           <BreadcrumbList>
             <BreadcrumbItem>
@@ -340,406 +465,485 @@ export default function SingleTuner() {
           </BreadcrumbList>
         </Breadcrumb>
         
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Trillium v7.15 Single Tuner</h1>
-            <p className="text-muted-foreground">
-              Fix parsing issues one record at a time using correct v7.15 PATTERN NAME DEF syntax
-            </p>
-          </div>
-
-        {/* Token Type Reference Panel */}
-        <Card className="border-primary/20 bg-primary/5">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Token Type Reference</CardTitle>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowTokenInfo(!showTokenInfo)}
-              >
-                {showTokenInfo ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </Button>
-            </div>
-            <CardDescription>
-              Trillium v7.15 token type codes for precise parsing control
-            </CardDescription>
-          </CardHeader>
-          
-          {showTokenInfo && (
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-primary">Name Particles</h4>
-                  <div className="space-y-1 text-muted-foreground">
-                    <div>DE, LA, LOS, LAS: <code className="bg-muted px-1.5 py-0.5 rounded">174</code></div>
-                    <div>DEL, DI, DA, DO: <code className="bg-muted px-1.5 py-0.5 rounded">175</code></div>
-                    <div>VAN, VON, DER: <code className="bg-muted px-1.5 py-0.5 rounded">174</code></div>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-primary">Business Types</h4>
-                  <div className="space-y-1 text-muted-foreground">
-                    <div>LLC, INC, CORP: <code className="bg-muted px-1.5 py-0.5 rounded">059</code></div>
-                    <div>LTD, CO, COMPANY: <code className="bg-muted px-1.5 py-0.5 rounded">059</code></div>
-                    <div>AND, &, OF: <code className="bg-muted px-1.5 py-0.5 rounded">058</code></div>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-primary">Core Types</h4>
-                  <div className="space-y-1 text-muted-foreground">
-                    <div>Regular word: <code className="bg-muted px-1.5 py-0.5 rounded">049</code></div>
-                    <div>Numbers: <code className="bg-muted px-1.5 py-0.5 rounded">050</code></div>
-                    <div>Punctuation: <code className="bg-muted px-1.5 py-0.5 rounded">051</code></div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          )}
-        </Card>
-
-        {/* Entity Type Selection */}
-        <Card className="p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Entity Type</h2>
-          <div className="flex gap-6">
-            <label className="flex items-center cursor-pointer">
-              <input 
-                type="radio" 
-                name="entityType" 
-                value="person"
-                checked={entityType === 'person'}
-                onChange={() => setEntityType('person')}
-                className="mr-2"
-              />
-              <span>Person</span>
-            </label>
-            <label className="flex items-center cursor-pointer">
-              <input 
-                type="radio" 
-                name="entityType" 
-                value="business"
-                checked={entityType === 'business'}
-                onChange={() => setEntityType('business')}
-                className="mr-2"
-              />
-              <span>Business</span>
-            </label>
-          </div>
-          <p className="text-sm text-muted-foreground mt-2">
-            Only one can be selected, parse based on which is selected
-          </p>
-        </Card>
-
-        {/* Original Parse Input */}
-        <Card className="p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Original Parse - Bad</h2>
-          <p className="text-sm text-muted-foreground mb-3">
-            Copy paste the bad output from Trillium
-          </p>
-          
-          <Textarea
-            className="font-mono text-sm min-h-24"
-            placeholder="Example: MARIA DE LOS SANTOS (currently parsing as 4 parties)"
-            value={originalParse}
-            onChange={(e) => setOriginalParse(e.target.value)}
-          />
-          
-          {parsedTokens.length > 0 && (
-            <div className="mt-3">
-              <p className="text-sm text-muted-foreground mb-2">Detected tokens:</p>
-              <div className="flex flex-wrap gap-2">
-                {parsedTokens.map((token, idx) => (
-                  <Badge key={idx} variant="destructive">
-                    {token}
-                  </Badge>
-                ))}
-              </div>
-              <p className="text-sm text-destructive mt-2">
-                Currently creates {parsedTokens.length} parties
+        <div className="space-y-6">
+          {/* Header with History */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">Trillium v7.15 Single Tuner</h1>
+              <p className="text-muted-foreground">
+                Advanced UI for precise parsing correction with AI assistance
               </p>
             </div>
-          )}
-        </Card>
-
-        {/* Manual Parse Entry */}
-        <Card className="p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Correct Parse Entry</h2>
-          <p className="text-sm text-muted-foreground mb-3">
-            Type in manually how the name should look
-          </p>
-          
-          {entityType === 'person' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-              <div>
-                <Label>Prefix</Label>
-                <Input
-                  placeholder="Dr"
-                  value={correctParse.prefix || ''}
-                  onChange={(e) => updateCorrectParse('prefix', e.target.value)}
-                />
-              </div>
-              
-              <div>
-                <Label>Given Name *</Label>
-                <Input
-                  placeholder="Maria"
-                  value={correctParse.firstName || ''}
-                  onChange={(e) => updateCorrectParse('firstName', e.target.value)}
-                />
-              </div>
-              
-              <div>
-                <Label>Middle</Label>
-                <Input
-                  placeholder="Isabel"
-                  value={correctParse.middle || ''}
-                  onChange={(e) => updateCorrectParse('middle', e.target.value)}
-                />
-              </div>
-              
-              <div>
-                <Label>Surname *</Label>
-                <Input
-                  placeholder="De Los Santos"
-                  value={correctParse.lastName || ''}
-                  onChange={(e) => updateCorrectParse('lastName', e.target.value)}
-                />
-              </div>
-              
-              <div>
-                <Label>Gen</Label>
-                <Input
-                  placeholder="Jr"
-                  value={correctParse.generation || ''}
-                  onChange={(e) => updateCorrectParse('generation', e.target.value)}
-                />
-              </div>
-            </div>
-          ) : (
-            <div>
-              <Label>Business Name *</Label>
-              <Input
-                placeholder="ABC Plumbing LLC"
-                value={correctParse.businessName || ''}
-                onChange={(e) => updateCorrectParse('businessName', e.target.value)}
-              />
-            </div>
-          )}
-          
-          <Button
-            onClick={generatePatterns}
-            disabled={!isValidInput()}
-            className="mt-4"
-          >
-            Parse
-          </Button>
-        </Card>
-
-        {/* Generated Patterns */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          {/* CLWDPAT */}
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-3">CLWDPAT - Tuning Code</h3>
             
-            <div className="bg-muted rounded-md p-4 font-mono text-sm min-h-[200px]">
-              {clwdpatCode ? (
-                <>
-                  <pre className="whitespace-pre-wrap break-words text-xs">{clwdpatCode}</pre>
-                  
-                  <div className="mt-4 flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => copyToClipboard(clwdpatCode, 'CLWDPAT')}
-                    >
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copy
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => downloadPattern('CLWDPAT', clwdpatCode)}
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Save
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <p className="text-muted-foreground">
-                  Pattern will appear here after parsing
-                </p>
-              )}
-            </div>
-            
-            {clwdpatCode && (
-              <div className="mt-3 text-xs text-muted-foreground space-y-1">
-                <p>• Add to CLWDPAT file after line 106053 (Spanish entries section)</p>
-                <p>• Pattern precedence: Longer patterns match first</p>
-                <div className="mt-2 p-2 bg-primary/5 rounded text-xs">
-                  <p className="font-semibold mb-1">v7.15 Syntax Used:</p>
-                  <ul className="space-y-1">
-                    <li>• PATTERN NAME DEF uses REC= (person names)</li>
-                    <li>• PATTERN MISC DEF uses RECODE= (business names)</li>
-                    <li>• WORDTYPE CONNECT - Particle definitions (DE, LA, LOS)</li>
-                    <li>• REC='GVN-NM1(1-2) SRNM(3-)' - Multi-word first names supported</li>
-                    <li>• Longer patterns match first</li>
-                  </ul>
-                </div>
-              </div>
-            )}
-          </Card>
-          
-          {/* pfprsdrv.par */}
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-3">pfprsdrv.par - Tuning Code</h3>
-            
-            <div className="bg-muted rounded-md p-4 font-mono text-sm min-h-[200px]">
-              {parserCode ? (
-                <>
-                  <pre className="whitespace-pre-wrap break-words text-xs">{parserCode}</pre>
-                  
-                  <div className="mt-4 flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => copyToClipboard(parserCode, 'Parser Config')}
-                    >
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copy
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => downloadPattern('parser_config', parserCode)}
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Save
-                    </Button>
-                  </div>
-                </>
-              ) : (
-                <p className="text-muted-foreground">
-                  Configuration will appear here if needed
-                </p>
-              )}
-            </div>
-            
-            {parserCode && (
-              <div className="mt-3 text-xs text-muted-foreground space-y-1">
-                <p>• Update existing parameters in pfprsdrv.par</p>
-                <div className="mt-2 p-2 bg-amber-100 dark:bg-amber-900/20 rounded">
-                  <p className="font-semibold mb-1">JOIN_LINES Order:</p>
-                  <code className="text-xs">"word1","token_code1","word2","token_code2"</code>
-                  <p className="mt-1">
-                    General patterns first → Specific patterns last (last rule wins)
-                  </p>
-                </div>
-              </div>
-            )}
-          </Card>
-        </div>
-
-        {/* Corrected Trillium Display */}
-        {parseResult && (
-          <Card className="p-6">
-            <h3 className="text-lg font-semibold mb-3">Corrected Trillium Display</h3>
-            <p className="text-sm text-muted-foreground mb-3">
-              This shows how Trillium v7.15 will parse the name after applying the patterns
-            </p>
-            
-            <div className={`rounded-md p-4 ${
-              parseResult.matchedPattern !== 'NONE - DEFAULT PARSING' ? 'bg-green-50 dark:bg-green-950/20' : 'bg-muted'
-            }`}>
-              <div className="space-y-3">
-                <div className="font-mono text-sm">
-                  <div className="mb-3 pb-3 border-b">
-                    <span className="text-muted-foreground">Input: </span>
-                    <span className="font-semibold">{originalParse}</span>
+            <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+              <SheetTrigger asChild>
+                <Button variant="outline">
+                  <History className="w-4 h-4 mr-2" />
+                  History ({history.length})
+                </Button>
+              </SheetTrigger>
+              <SheetContent className="w-[400px] sm:w-[540px]">
+                <SheetHeader>
+                  <SheetTitle>Tune History</SheetTitle>
+                  <SheetDescription>
+                    Search and load previous parsing fixes
+                  </SheetDescription>
+                </SheetHeader>
+                
+                <div className="mt-4">
+                  <div className="relative mb-4">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search history..."
+                      value={searchHistory}
+                      onChange={(e) => setSearchHistory(e.target.value)}
+                      className="pl-10"
+                    />
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <h4 className="text-xs text-muted-foreground uppercase mb-2">Parse Result</h4>
-                      {parseResult.parties[0] && (
-                        <div className="space-y-1 text-sm">
-                          <div>
-                            <span className="text-muted-foreground">Party Type:</span>
-                            <span className="ml-2 font-medium">{parseResult.parties[0].type}</span>
-                          </div>
-                          {parseResult.parties[0].firstName && (
-                            <div>
-                              <span className="text-muted-foreground">First Name:</span>
-                              <span className="ml-2 font-medium text-primary">
-                                {parseResult.parties[0].firstName}
-                              </span>
-                            </div>
-                          )}
-                          {parseResult.parties[0].lastName && (
-                            <div>
-                              <span className="text-muted-foreground">Last Name:</span>
-                              <span className="ml-2 font-medium text-primary">
-                                {parseResult.parties[0].lastName}
-                              </span>
-                            </div>
-                          )}
-                          {parseResult.parties[0].businessName && (
-                            <div>
-                              <span className="text-muted-foreground">Business Name:</span>
-                              <span className="ml-2 font-medium text-primary">
-                                {parseResult.parties[0].businessName}
-                              </span>
-                            </div>
-                          )}
-                          {parseResult.parties[0].generation && (
-                            <div>
-                              <span className="text-muted-foreground">Generation:</span>
-                              <span className="ml-2 font-medium text-primary">
-                                {parseResult.parties[0].generation}
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                  <ScrollArea className="h-[600px]">
+                    <div className="space-y-3">
+                      {filteredHistory.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-8">
+                          No history yet. Save a tune to get started.
+                        </p>
+                      ) : (
+                        filteredHistory.map((tune) => (
+                          <Card
+                            key={tune.id}
+                            className="cursor-pointer hover:bg-accent transition-colors"
+                            onClick={() => loadFromHistory(tune)}
+                          >
+                            <CardHeader className="p-4">
+                              <div className="flex items-start justify-between">
+                                <div className="space-y-1 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline">{tune.entityType}</Badge>
+                                    {getStatusBadge(tune.status)}
+                                  </div>
+                                  <p className="text-sm font-medium">{tune.original}</p>
+                                  <p className="text-xs text-muted-foreground">{tune.description}</p>
+                                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                    <Clock className="w-3 h-3" />
+                                    {new Date(tune.date).toLocaleString()}
+                                  </div>
+                                </div>
+                              </div>
+                            </CardHeader>
+                          </Card>
+                        ))
                       )}
                     </div>
-                    
+                  </ScrollArea>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+
+          {/* Main Entity Panel */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Entity Configuration</CardTitle>
+              <CardDescription>Select entity type and configure parsing parameters</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Entity Type Tabs */}
+              <div>
+                <Label className="text-base font-semibold mb-3 block">Entity Type</Label>
+                <Tabs value={entityType} onValueChange={(v) => setEntityType(v as any)}>
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="person">Person</TabsTrigger>
+                    <TabsTrigger value="business">Business</TabsTrigger>
+                    <TabsTrigger value="address">Address</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              <Separator />
+
+              {/* Original Bad Parse Input */}
+              <div className="space-y-3">
+                <Label htmlFor="badParse" className="text-base font-semibold">
+                  Original Bad Name (Input)
+                </Label>
+                <Textarea
+                  id="badParse"
+                  placeholder="Enter the bad parse from Trillium (e.g., MARIA DE LOS SANTOS)"
+                  value={originalParse}
+                  onChange={(e) => setOriginalParse(e.target.value)}
+                  className="min-h-20 font-mono"
+                />
+              </div>
+
+              {/* Entity-Specific Fields */}
+              {entityType === 'person' && (
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                  <div>
+                    <Label htmlFor="prefix">Prefix</Label>
+                    <Input
+                      id="prefix"
+                      placeholder="Dr"
+                      value={correctParse.prefix || ''}
+                      onChange={(e) => updateCorrectParse('prefix', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="first">First *</Label>
+                    <Input
+                      id="first"
+                      placeholder="Maria"
+                      value={correctParse.firstName || ''}
+                      onChange={(e) => updateCorrectParse('firstName', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="middle">Middle</Label>
+                    <Input
+                      id="middle"
+                      placeholder="Elena"
+                      value={correctParse.middle || ''}
+                      onChange={(e) => updateCorrectParse('middle', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="last">Last *</Label>
+                    <Input
+                      id="last"
+                      placeholder="De Los Santos"
+                      value={correctParse.lastName || ''}
+                      onChange={(e) => updateCorrectParse('lastName', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="gen">Gen</Label>
+                    <Input
+                      id="gen"
+                      placeholder="Jr"
+                      value={correctParse.generation || ''}
+                      onChange={(e) => updateCorrectParse('generation', e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {entityType === 'business' && (
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="bizName">Full Business Name (bad) *</Label>
+                    <Input
+                      id="bizName"
+                      placeholder="ABC Plumbing LLC"
+                      value={correctParse.businessName || ''}
+                      onChange={(e) => updateCorrectParse('businessName', e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <h4 className="text-xs text-muted-foreground uppercase mb-2">Statistics</h4>
-                      <div className="space-y-1 text-sm">
-                        <div>
-                          <span className="text-muted-foreground">Party Count:</span>
-                          <span className="ml-2 font-medium text-green-600">
-                            {parseResult.partyCount}
-                            <span className="text-xs text-muted-foreground ml-1">
-                              (was {parsedTokens.length})
-                            </span>
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Pattern Match:</span>
-                          <span className="ml-2 font-medium text-green-600">
-                            {parseResult.matchedPattern !== 'NONE - DEFAULT PARSING' ? '✓' : '✗'}
-                          </span>
-                        </div>
-                      </div>
+                      <Label htmlFor="suffix">Known Suffix</Label>
+                      <Input
+                        id="suffix"
+                        placeholder="LLC"
+                        value={correctParse.businessSuffix || ''}
+                        onChange={(e) => updateCorrectParse('businessSuffix', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="terms">Key Terms</Label>
+                      <Input
+                        id="terms"
+                        placeholder="Plumbing, Services"
+                        value={correctParse.businessKeyTerms || ''}
+                        onChange={(e) => updateCorrectParse('businessKeyTerms', e.target.value)}
+                      />
                     </div>
                   </div>
                 </div>
-                
-                <div className="mt-4 pt-4 border-t">
-                  <h4 className="text-xs text-muted-foreground uppercase mb-2">Parse Logic Applied</h4>
-                  <ol className="text-xs text-muted-foreground space-y-1">
-                    {parseResult.parseSteps.map((step: string, idx: number) => (
-                      <li key={idx}>{idx + 1}. {step}</li>
-                    ))}
-                  </ol>
+              )}
+
+              {entityType === 'address' && (
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="badAddr">Bad Address (raw)</Label>
+                    <Input
+                      id="badAddr"
+                      placeholder="123 MAIN STREET APT 4B NEW YORK NY 10001"
+                      value={address.badAddress || ''}
+                      onChange={(e) => updateAddress('badAddress', e.target.value)}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <Label htmlFor="house">House #</Label>
+                      <Input
+                        id="house"
+                        placeholder="123"
+                        value={address.houseNumber || ''}
+                        onChange={(e) => updateAddress('houseNumber', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="street">Street</Label>
+                      <Input
+                        id="street"
+                        placeholder="Main"
+                        value={address.street || ''}
+                        onChange={(e) => updateAddress('street', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="type">Type</Label>
+                      <Select
+                        value={address.streetType}
+                        onValueChange={(v) => updateAddress('streetType', v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="STREET">Street</SelectItem>
+                          <SelectItem value="AVENUE">Avenue</SelectItem>
+                          <SelectItem value="ROAD">Road</SelectItem>
+                          <SelectItem value="BOULEVARD">Boulevard</SelectItem>
+                          <SelectItem value="DRIVE">Drive</SelectItem>
+                          <SelectItem value="LANE">Lane</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="unit">Unit</Label>
+                      <Input
+                        id="unit"
+                        placeholder="4B"
+                        value={address.unit || ''}
+                        onChange={(e) => updateAddress('unit', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div>
+                      <Label htmlFor="city">City</Label>
+                      <Input
+                        id="city"
+                        placeholder="New York"
+                        value={address.city || ''}
+                        onChange={(e) => updateAddress('city', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="state">State</Label>
+                      <Input
+                        id="state"
+                        placeholder="NY"
+                        value={address.state || ''}
+                        onChange={(e) => updateAddress('state', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="zip">ZIP</Label>
+                      <Input
+                        id="zip"
+                        placeholder="10001"
+                        value={address.zip || ''}
+                        onChange={(e) => updateAddress('zip', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="country">Country</Label>
+                      <Input
+                        id="country"
+                        placeholder="USA"
+                        value={address.country || ''}
+                        onChange={(e) => updateAddress('country', e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </div>
+              )}
+
+              <Separator />
+
+              {/* Parse Error Description */}
+              <div className="space-y-3">
+                <Label htmlFor="errorDesc" className="text-base font-semibold">
+                  Parse Error Description
+                </Label>
+                <Textarea
+                  id="errorDesc"
+                  placeholder="Describe what Trillium did wrong (e.g., 'Split surname with particle into 3 parties')"
+                  value={parseErrorDescription}
+                  onChange={(e) => setParseErrorDescription(e.target.value)}
+                  className="min-h-16"
+                />
               </div>
-            </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  onClick={handleAISuggest}
+                  variant="secondary"
+                  disabled={!originalParse.trim()}
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  AI Suggest
+                </Button>
+                
+                {entityType === 'address' && (
+                  <Button
+                    onClick={handleAutoFix}
+                    variant="secondary"
+                    disabled={!address.badAddress}
+                  >
+                    <Wand2 className="w-4 h-4 mr-2" />
+                    Auto-Fix
+                  </Button>
+                )}
+                
+                <Button
+                  onClick={generatePatterns}
+                  disabled={!isValidInput()}
+                  className="bg-primary"
+                >
+                  Generate Patterns
+                </Button>
+              </div>
+            </CardContent>
           </Card>
-        )}
+
+          {/* Pattern Output Tabs */}
+          {clwdpatCode && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Pattern Output</CardTitle>
+                <CardDescription>Generated Trillium v7.15 configuration code</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Tabs defaultValue="clwdpat">
+                  <TabsList className="grid w-full grid-cols-4">
+                    <TabsTrigger value="clwdpat">CLWDPAT</TabsTrigger>
+                    <TabsTrigger value="clwdpat2">CLWDPAT 2</TabsTrigger>
+                    <TabsTrigger value="parser">pfprsdrv.par</TabsTrigger>
+                    <TabsTrigger value="summary">Summary</TabsTrigger>
+                  </TabsList>
+                  
+                  <TabsContent value="clwdpat" className="space-y-4">
+                    <div className="bg-muted rounded-md p-4 font-mono text-xs">
+                      <pre className="whitespace-pre-wrap">{clwdpatCode}</pre>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => copyToClipboard(clwdpatCode, 'CLWDPAT')}
+                      >
+                        <Copy className="w-4 h-4 mr-2" />
+                        Copy
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => downloadPattern('CLWDPAT', clwdpatCode)}
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Download
+                      </Button>
+                    </div>
+                  </TabsContent>
+                  
+                  <TabsContent value="clwdpat2" className="space-y-4">
+                    <div className="bg-muted rounded-md p-4">
+                      <p className="text-sm text-muted-foreground">
+                        Alternative CLWDPAT patterns (if applicable)
+                      </p>
+                    </div>
+                  </TabsContent>
+                  
+                  <TabsContent value="parser" className="space-y-4">
+                    {parserCode ? (
+                      <>
+                        <div className="bg-muted rounded-md p-4 font-mono text-xs">
+                          <pre className="whitespace-pre-wrap">{parserCode}</pre>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => copyToClipboard(parserCode, 'Parser Config')}
+                          >
+                            <Copy className="w-4 h-4 mr-2" />
+                            Copy
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => downloadPattern('parser_config', parserCode)}
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Download
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="bg-muted rounded-md p-4">
+                        <p className="text-sm text-muted-foreground">
+                          No parser configuration needed for this pattern
+                        </p>
+                      </div>
+                    )}
+                  </TabsContent>
+                  
+                  <TabsContent value="summary" className="space-y-4">
+                    <div className="bg-muted rounded-md p-4 font-mono text-xs">
+                      <pre className="whitespace-pre-wrap">{summaryCode}</pre>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Validation Status */}
+          {clwdpatCode && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Validation Status</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <Label>Status:</Label>
+                    <Select
+                      value={validationStatus}
+                      onValueChange={(v) => setValidationStatus(v as any)}
+                    >
+                      <SelectTrigger className="w-[200px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="needs-review">Needs Review</SelectItem>
+                        <SelectItem value="validated">Validated</SelectItem>
+                        <SelectItem value="auto-qc-passed">Auto QC Passed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {getStatusBadge(validationStatus)}
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <Button onClick={handleSave}>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Tune
+                    </Button>
+                    <Button variant="outline">
+                      <Download className="w-4 h-4 mr-2" />
+                      Export
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </main>
     </div>
