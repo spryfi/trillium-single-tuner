@@ -98,6 +98,14 @@ export default function SingleTuner() {
   const [entityType, setEntityType] = useState<'person' | 'business' | 'address'>('person');
   const [originalParse, setOriginalParse] = useState('');
   const [parseErrorDescription, setParseErrorDescription] = useState('');
+  
+  // Separate bad parse inputs for each entity type
+  const [badParse, setBadParse] = useState({
+    person: '',
+    business: '',
+    address: ''
+  });
+  
   const [correctParse, setCorrectParse] = useState<ParsedName>({});
   const [address, setAddress] = useState<Address>({});
   const [clwdpatCode, setClwdpatCode] = useState('');
@@ -561,202 +569,269 @@ export default function SingleTuner() {
 
               <Separator />
 
-              {/* Original Bad Parse Input */}
-              <div className="space-y-3">
-                <Label htmlFor="badParse" className="text-base font-semibold">
-                  Original Bad Name (Input)
-                </Label>
-                <Textarea
-                  id="badParse"
-                  placeholder="Enter the bad parse from Trillium (e.g., MARIA DE LOS SANTOS)"
-                  value={originalParse}
-                  onChange={(e) => setOriginalParse(e.target.value)}
-                  className="min-h-20 font-mono"
-                />
-              </div>
-
-              {/* Entity-Specific Fields */}
+              {/* Entity-Specific Fields with Bad/Correct Parse Sections */}
               {entityType === 'person' && (
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                  <div>
-                    <Label htmlFor="prefix">Prefix</Label>
-                    <Input
-                      id="prefix"
-                      placeholder="Dr"
-                      value={correctParse.prefix || ''}
-                      onChange={(e) => updateCorrectParse('prefix', e.target.value)}
+                <div className="space-y-6">
+                  {/* Bad Parse Section */}
+                  <div className="p-4 bg-red-50 dark:bg-red-950/20 rounded-lg border-2 border-red-200 dark:border-red-800">
+                    <Label htmlFor="badParsePerson" className="text-red-900 dark:text-red-100 font-semibold text-base">
+                      Original Bad Name (Input) *
+                    </Label>
+                    <Textarea
+                      id="badParsePerson"
+                      value={badParse.person}
+                      onChange={(e) => {
+                        setBadParse({ ...badParse, person: e.target.value });
+                        setOriginalParse(e.target.value);
+                      }}
+                      placeholder="Paste the incorrectly parsed person name here... (e.g., MARIA DE LOS SANTOS)"
+                      className="mt-2 min-h-[80px] font-mono bg-white dark:bg-gray-900"
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="first">First *</Label>
-                    <Input
-                      id="first"
-                      placeholder="Maria"
-                      value={correctParse.firstName || ''}
-                      onChange={(e) => updateCorrectParse('firstName', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="middle">Middle</Label>
-                    <Input
-                      id="middle"
-                      placeholder="Elena"
-                      value={correctParse.middle || ''}
-                      onChange={(e) => updateCorrectParse('middle', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="last">Last *</Label>
-                    <Input
-                      id="last"
-                      placeholder="De Los Santos"
-                      value={correctParse.lastName || ''}
-                      onChange={(e) => updateCorrectParse('lastName', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="gen">Gen</Label>
-                    <Input
-                      id="gen"
-                      placeholder="Jr"
-                      value={correctParse.generation || ''}
-                      onChange={(e) => updateCorrectParse('generation', e.target.value)}
-                    />
+
+                  {/* Correct Parse Section */}
+                  <div className="p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border-2 border-green-200 dark:border-green-800">
+                    <h4 className="font-semibold text-green-900 dark:text-green-100 mb-4 text-base">
+                      Corrected Parse Components
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                      <div>
+                        <Label htmlFor="prefix">Prefix</Label>
+                        <Input
+                          id="prefix"
+                          placeholder="DR, MR, MS"
+                          value={correctParse.prefix || ''}
+                          onChange={(e) => updateCorrectParse('prefix', e.target.value)}
+                          className="bg-white dark:bg-gray-900"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="first">First *</Label>
+                        <Input
+                          id="first"
+                          placeholder="MARIA"
+                          value={correctParse.firstName || ''}
+                          onChange={(e) => updateCorrectParse('firstName', e.target.value)}
+                          className="bg-white dark:bg-gray-900"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="middle">Middle</Label>
+                        <Input
+                          id="middle"
+                          placeholder="ELENA"
+                          value={correctParse.middle || ''}
+                          onChange={(e) => updateCorrectParse('middle', e.target.value)}
+                          className="bg-white dark:bg-gray-900"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="last">Last *</Label>
+                        <Input
+                          id="last"
+                          placeholder="DE LOS SANTOS"
+                          value={correctParse.lastName || ''}
+                          onChange={(e) => updateCorrectParse('lastName', e.target.value)}
+                          className="bg-white dark:bg-gray-900"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="gen">Gen</Label>
+                        <Input
+                          id="gen"
+                          placeholder="JR, SR, III"
+                          value={correctParse.generation || ''}
+                          onChange={(e) => updateCorrectParse('generation', e.target.value)}
+                          className="bg-white dark:bg-gray-900"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
 
               {entityType === 'business' && (
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="bizName">Full Business Name (bad) *</Label>
-                    <Input
-                      id="bizName"
-                      placeholder="ABC Plumbing LLC"
-                      value={correctParse.businessName || ''}
-                      onChange={(e) => updateCorrectParse('businessName', e.target.value)}
+                <div className="space-y-6">
+                  {/* Bad Parse Section */}
+                  <div className="p-4 bg-red-50 dark:bg-red-950/20 rounded-lg border-2 border-red-200 dark:border-red-800">
+                    <Label htmlFor="badParseBusiness" className="text-red-900 dark:text-red-100 font-semibold text-base">
+                      Full Business Name (Bad) *
+                    </Label>
+                    <Textarea
+                      id="badParseBusiness"
+                      value={badParse.business}
+                      onChange={(e) => {
+                        setBadParse({ ...badParse, business: e.target.value });
+                        setOriginalParse(e.target.value);
+                      }}
+                      placeholder="Paste the incorrectly parsed business name here... (e.g., ABC PLUMBING LLC)"
+                      className="mt-2 min-h-[80px] font-mono bg-white dark:bg-gray-900"
                     />
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="suffix">Known Suffix</Label>
-                      <Input
-                        id="suffix"
-                        placeholder="LLC"
-                        value={correctParse.businessSuffix || ''}
-                        onChange={(e) => updateCorrectParse('businessSuffix', e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="terms">Key Terms</Label>
-                      <Input
-                        id="terms"
-                        placeholder="Plumbing, Services"
-                        value={correctParse.businessKeyTerms || ''}
-                        onChange={(e) => updateCorrectParse('businessKeyTerms', e.target.value)}
-                      />
+
+                  {/* Correct Parse Section */}
+                  <div className="p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border-2 border-green-200 dark:border-green-800">
+                    <h4 className="font-semibold text-green-900 dark:text-green-100 mb-4 text-base">
+                      Corrected Parse Components
+                    </h4>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="bizName">Corrected Business Name *</Label>
+                        <Input
+                          id="bizName"
+                          placeholder="ABC PLUMBING"
+                          value={correctParse.businessName || ''}
+                          onChange={(e) => updateCorrectParse('businessName', e.target.value)}
+                          className="bg-white dark:bg-gray-900"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="suffix">Known Suffix</Label>
+                          <Input
+                            id="suffix"
+                            placeholder="LLC, INC, CORP, LTD"
+                            value={correctParse.businessSuffix || ''}
+                            onChange={(e) => updateCorrectParse('businessSuffix', e.target.value)}
+                            className="bg-white dark:bg-gray-900"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="terms">Key Terms / Industry Type</Label>
+                          <Input
+                            id="terms"
+                            placeholder="PLUMBING, INSURANCE, CONSULTING"
+                            value={correctParse.businessKeyTerms || ''}
+                            onChange={(e) => updateCorrectParse('businessKeyTerms', e.target.value)}
+                            className="bg-white dark:bg-gray-900"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
 
               {entityType === 'address' && (
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="badAddr">Bad Address (raw)</Label>
-                    <Input
-                      id="badAddr"
-                      placeholder="123 MAIN STREET APT 4B NEW YORK NY 10001"
-                      value={address.badAddress || ''}
-                      onChange={(e) => updateAddress('badAddress', e.target.value)}
+                <div className="space-y-6">
+                  {/* Bad Parse Section */}
+                  <div className="p-4 bg-red-50 dark:bg-red-950/20 rounded-lg border-2 border-red-200 dark:border-red-800">
+                    <Label htmlFor="badParseAddress" className="text-red-900 dark:text-red-100 font-semibold text-base">
+                      Bad Address (Raw) *
+                    </Label>
+                    <Textarea
+                      id="badParseAddress"
+                      value={badParse.address}
+                      onChange={(e) => {
+                        setBadParse({ ...badParse, address: e.target.value });
+                        setOriginalParse(e.target.value);
+                        updateAddress('badAddress', e.target.value);
+                      }}
+                      placeholder="Paste the incorrectly parsed address here... (e.g., 123 MAIN STREET APT 4B NEW YORK NY 10001)"
+                      className="mt-2 min-h-[80px] font-mono bg-white dark:bg-gray-900"
                     />
                   </div>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div>
-                      <Label htmlFor="house">House #</Label>
-                      <Input
-                        id="house"
-                        placeholder="123"
-                        value={address.houseNumber || ''}
-                        onChange={(e) => updateAddress('houseNumber', e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="street">Street</Label>
-                      <Input
-                        id="street"
-                        placeholder="Main"
-                        value={address.street || ''}
-                        onChange={(e) => updateAddress('street', e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="type">Type</Label>
-                      <Select
-                        value={address.streetType}
-                        onValueChange={(v) => updateAddress('streetType', v)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="STREET">Street</SelectItem>
-                          <SelectItem value="AVENUE">Avenue</SelectItem>
-                          <SelectItem value="ROAD">Road</SelectItem>
-                          <SelectItem value="BOULEVARD">Boulevard</SelectItem>
-                          <SelectItem value="DRIVE">Drive</SelectItem>
-                          <SelectItem value="LANE">Lane</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="unit">Unit</Label>
-                      <Input
-                        id="unit"
-                        placeholder="4B"
-                        value={address.unit || ''}
-                        onChange={(e) => updateAddress('unit', e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div>
-                      <Label htmlFor="city">City</Label>
-                      <Input
-                        id="city"
-                        placeholder="New York"
-                        value={address.city || ''}
-                        onChange={(e) => updateAddress('city', e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="state">State</Label>
-                      <Input
-                        id="state"
-                        placeholder="NY"
-                        value={address.state || ''}
-                        onChange={(e) => updateAddress('state', e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="zip">ZIP</Label>
-                      <Input
-                        id="zip"
-                        placeholder="10001"
-                        value={address.zip || ''}
-                        onChange={(e) => updateAddress('zip', e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="country">Country</Label>
-                      <Input
-                        id="country"
-                        placeholder="USA"
-                        value={address.country || ''}
-                        onChange={(e) => updateAddress('country', e.target.value)}
-                      />
+
+                  {/* Correct Parse Section */}
+                  <div className="p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border-2 border-green-200 dark:border-green-800">
+                    <h4 className="font-semibold text-green-900 dark:text-green-100 mb-4 text-base">
+                      Corrected Address Components
+                    </h4>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                          <Label htmlFor="house">House #</Label>
+                          <Input
+                            id="house"
+                            placeholder="123"
+                            value={address.houseNumber || ''}
+                            onChange={(e) => updateAddress('houseNumber', e.target.value)}
+                            className="bg-white dark:bg-gray-900"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="street">Street Name *</Label>
+                          <Input
+                            id="street"
+                            placeholder="MAIN"
+                            value={address.street || ''}
+                            onChange={(e) => updateAddress('street', e.target.value)}
+                            className="bg-white dark:bg-gray-900"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="type">Street Type</Label>
+                          <Select
+                            value={address.streetType}
+                            onValueChange={(v) => updateAddress('streetType', v)}
+                          >
+                            <SelectTrigger className="bg-white dark:bg-gray-900">
+                              <SelectValue placeholder="ST, AVE, RD" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="STREET">Street</SelectItem>
+                              <SelectItem value="AVENUE">Avenue</SelectItem>
+                              <SelectItem value="ROAD">Road</SelectItem>
+                              <SelectItem value="BOULEVARD">Boulevard</SelectItem>
+                              <SelectItem value="DRIVE">Drive</SelectItem>
+                              <SelectItem value="LANE">Lane</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label htmlFor="unit">Unit / Apt</Label>
+                          <Input
+                            id="unit"
+                            placeholder="APT 4B, UNIT 102"
+                            value={address.unit || ''}
+                            onChange={(e) => updateAddress('unit', e.target.value)}
+                            className="bg-white dark:bg-gray-900"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                          <Label htmlFor="city">City *</Label>
+                          <Input
+                            id="city"
+                            placeholder="NEW YORK"
+                            value={address.city || ''}
+                            onChange={(e) => updateAddress('city', e.target.value)}
+                            className="bg-white dark:bg-gray-900"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="state">State</Label>
+                          <Input
+                            id="state"
+                            placeholder="NY"
+                            value={address.state || ''}
+                            onChange={(e) => updateAddress('state', e.target.value)}
+                            className="bg-white dark:bg-gray-900"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="zip">ZIP Code</Label>
+                          <Input
+                            id="zip"
+                            placeholder="10001"
+                            value={address.zip || ''}
+                            onChange={(e) => updateAddress('zip', e.target.value)}
+                            className="bg-white dark:bg-gray-900"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="country">Country</Label>
+                          <Input
+                            id="country"
+                            placeholder="USA"
+                            value={address.country || ''}
+                            onChange={(e) => updateAddress('country', e.target.value)}
+                            className="bg-white dark:bg-gray-900"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
