@@ -4,6 +4,10 @@
 
 **URL**: https://lovable.dev/projects/a8f141c1-74cc-4e67-be28-e8aee7b2a21d
 
+## Documentation
+
+Additional developer documentation is available in the `docs/` folder. See `docs/perplexity_overview.md` for a quick Perplexity-generated overview of the Trillium Single Tuner project.
+
 ## How can I edit this code?
 
 There are several ways of editing your application.

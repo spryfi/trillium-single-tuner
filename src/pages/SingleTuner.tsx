@@ -36,6 +36,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { supabase } from '../lib/supabaseClient';
+
 
 interface ParsedName {
   prefix?: string;
@@ -94,6 +96,19 @@ class TrilliumTokenizer {
 }
 
 export default function SingleTuner() {
+  const fetchPatterns = async () => {
+    const { data, error } = await supabase
+      .from('tune7_pattern_library')
+      .select('*')
+      .limit(100);
+
+    if (error) {
+      console.error('Pattern fetch error:', error);
+      return;
+    }
+    console.log('Fetched patterns:', data);
+    // Later: set this data to state to use in the UI!
+  };
   const { toast } = useToast();
   const [entityType, setEntityType] = useState<'person' | 'business' | 'address'>('person');
   const [originalParse, setOriginalParse] = useState('');
@@ -183,6 +198,10 @@ export default function SingleTuner() {
   };
 
   const generatePatterns = () => {
+    console.log("Generate Patterns clicked");
+    console.log("originalParse:", originalParse);
+    console.log("entityType:", entityType);
+
     const tokenizer = new TrilliumTokenizer();
     const patterns: string[] = [];
     const upperOriginal = originalParse.toUpperCase().trim();
@@ -293,7 +312,8 @@ export default function SingleTuner() {
       }
     }
     
-    setClwdpatCode(patterns.join('\n'));
+  console.log("patterns to output:", patterns.join('\n'));
+  setClwdpatCode(patterns.join('\n'));
     
     // Generate parser config
     const config: string[] = [];
@@ -877,7 +897,6 @@ export default function SingleTuner() {
                 
                 <Button
                   onClick={generatePatterns}
-                  disabled={!isValidInput()}
                   className="bg-primary"
                 >
                   Generate Patterns
