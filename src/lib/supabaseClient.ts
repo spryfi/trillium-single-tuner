@@ -16,13 +16,13 @@ const supabaseUrl =
 	(import.meta.env as any).NEXT_PUBLIC_SUPABASE_URL ||
 	// Node process env fallback (build-time/server) - guard to avoid ReferenceError in browser
 	(typeof process !== 'undefined' && process.env ? process.env.NEXT_PUBLIC_SUPABASE_URL : undefined) ||
-	'';
+	'https://placeholder.supabase.co';
 
 const supabaseAnonKey =
 	(runtimeWindowEnv && runtimeWindowEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY) ||
 	(import.meta.env as any).VITE_SUPABASE_ANON_KEY ||
 	(import.meta.env as any).NEXT_PUBLIC_SUPABASE_ANON_KEY ||
 	(typeof process !== 'undefined' && process.env ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : undefined) ||
-	'';
+	'placeholder-anon-key';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);

@@ -96,19 +96,6 @@ class TrilliumTokenizer {
 }
 
 export default function SingleTuner() {
-  const fetchPatterns = async () => {
-    const { data, error } = await supabase
-      .from('tune7_pattern_library')
-      .select('*')
-      .limit(100);
-
-    if (error) {
-      console.error('Pattern fetch error:', error);
-      return;
-    }
-    console.log('Fetched patterns:', data);
-    // Later: set this data to state to use in the UI!
-  };
   const { toast } = useToast();
   const [entityType, setEntityType] = useState<'person' | 'business' | 'address'>('person');
   const [originalParse, setOriginalParse] = useState('');
