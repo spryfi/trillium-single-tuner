@@ -1,4 +1,4 @@
-import { Database, Wrench } from "lucide-react";
+import { Database, Wrench, Package } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
@@ -34,6 +34,15 @@ export const Header = () => {
             >
               <Wrench className="w-4 h-4 mr-2" />
               Single Tuner
+            </Button>
+          </Link>
+          <Link to="/release-builder">
+            <Button 
+              variant={location.pathname === '/release-builder' ? 'default' : 'ghost'}
+              size="sm"
+            >
+              <Package className="w-4 h-4 mr-2" />
+              Release Builder
             </Button>
           </Link>
         </div>
