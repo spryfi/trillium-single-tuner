@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sparkles, Loader2, ArrowRight, ExternalLink, AlertCircle } from 'lucide-react';
+import { Sparkles, Loader2, ArrowRight, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
+import { supabase } from '@/integrations/supabase/client';
 import { ProModeSelector, ProMode } from './ProModeSelector';
 import { ProThinkingPanel } from './ProThinkingPanel';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface UseProProps {
   engine: 'CDP' | 'BDP';
@@ -45,11 +44,6 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, rec, recode, onAppl
   const [customQuestion, setCustomQuestion] = useState('');
 
   const handleUsePro = async () => {
-    if (!isSupabaseConfigured()) {
-      toast.error('Supabase project not connected. Please connect your Supabase project to use GPT-5 PRO features.');
-      return;
-    }
-
     if (!rawInput.trim()) {
       toast.error('Enter raw input first');
       return;
@@ -97,16 +91,9 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, rec, recode, onAppl
     if (!norm) return;
 
     try {
-      const { error } = await supabase.from('normalized_names').insert({
-        query: norm.query,
-        normalized: norm.normalizedName,
-        keep_hyphen: norm.keepHyphen,
-        sources: norm.sources,
-        rationale: norm.rationale
-      });
-
-      if (error) throw error;
-      toast.success('Normalization saved');
+      // Table needs to be created in Supabase
+      console.log('Normalization data:', norm);
+      toast.info('Normalization data logged to console');
     } catch (error) {
       console.error('Save normalization error:', error);
       toast.error('Failed to save normalization');
@@ -130,15 +117,6 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, rec, recode, onAppl
 
   return (
     <div className="space-y-4">
-      {!isSupabaseConfigured() && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="text-xs">
-            GPT-5 PRO requires a connected Supabase project. Please connect your Supabase project in the project settings to use these features.
-          </AlertDescription>
-        </Alert>
-      )}
-      
       <div>
         <Label className="text-xs mb-2 block">Pro Mode</Label>
         <ProModeSelector mode={mode} onChange={setMode} />
