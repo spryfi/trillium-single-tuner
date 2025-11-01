@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sparkles, Loader2, ArrowRight, ExternalLink } from 'lucide-react';
+import { Sparkles, Loader2, ArrowRight, ExternalLink, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { ProModeSelector, ProMode } from './ProModeSelector';
 import { ProThinkingPanel } from './ProThinkingPanel';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface UseProProps {
   engine: 'CDP' | 'BDP';
@@ -44,6 +45,11 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, rec, recode, onAppl
   const [customQuestion, setCustomQuestion] = useState('');
 
   const handleUsePro = async () => {
+    if (!isSupabaseConfigured()) {
+      toast.error('Backend not configured. Please enable Lovable Cloud to use GPT-5 PRO features.');
+      return;
+    }
+
     if (!rawInput.trim()) {
       toast.error('Enter raw input first');
       return;
@@ -124,6 +130,15 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, rec, recode, onAppl
 
   return (
     <div className="space-y-4">
+      {!isSupabaseConfigured() && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="text-xs">
+            GPT-5 PRO requires Lovable Cloud to be enabled. Please enable it in your project settings to use these features.
+          </AlertDescription>
+        </Alert>
+      )}
+      
       <div>
         <Label className="text-xs mb-2 block">Pro Mode</Label>
         <ProModeSelector mode={mode} onChange={setMode} />
