@@ -1,1 +1,13 @@
 project_id = "ebavdjmderteydksnwmh"
+
+[functions.pro-analyze]
+verify_jwt = false
+
+[functions.pro-suggest-pattern]
+verify_jwt = false
+
+[functions.pro-normalize]
+verify_jwt = false
+
+[functions.pro-validate]
+verify_jwt = false

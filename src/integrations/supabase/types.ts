@@ -437,6 +437,36 @@ export type Database = {
         }
         Relationships: []
       }
+      normalized_names: {
+        Row: {
+          created_at: string | null
+          id: string
+          keep_hyphen: boolean
+          normalized: string
+          query: string
+          rationale: string | null
+          sources: Json
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          keep_hyphen: boolean
+          normalized: string
+          query: string
+          rationale?: string | null
+          sources?: Json
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          keep_hyphen?: boolean
+          normalized?: string
+          query?: string
+          rationale?: string | null
+          sources?: Json
+        }
+        Relationships: []
+      }
       poc_achievements: {
         Row: {
           achievement_description: string | null
@@ -2968,6 +2998,62 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pro_actions: {
+        Row: {
+          action: string
+          created_at: string | null
+          id: string
+          payload: Json
+          session_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          id?: string
+          payload: Json
+          session_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          id?: string
+          payload?: Json
+          session_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pro_actions_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "pro_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pro_sessions: {
+        Row: {
+          created_at: string | null
+          id: string
+          mode: string
+          request: Json
+          response: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          mode: string
+          request: Json
+          response?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          mode?: string
+          request?: Json
+          response?: Json | null
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
