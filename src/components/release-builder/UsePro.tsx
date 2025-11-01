@@ -46,7 +46,7 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, rec, recode, onAppl
 
   const handleUsePro = async () => {
     if (!isSupabaseConfigured()) {
-      toast.error('Backend not configured. Please enable Lovable Cloud to use GPT-5 PRO features.');
+      toast.error('Supabase project not connected. Please connect your Supabase project to use GPT-5 PRO features.');
       return;
     }
 
@@ -134,7 +134,7 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, rec, recode, onAppl
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="text-xs">
-            GPT-5 PRO requires Lovable Cloud to be enabled. Please enable it in your project settings to use these features.
+            GPT-5 PRO requires a connected Supabase project. Please connect your Supabase project in the project settings to use these features.
           </AlertDescription>
         </Alert>
       )}
