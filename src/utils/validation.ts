@@ -2,10 +2,69 @@
  * Validation utilities for Trillium v7.15 patterns
  */
 
-interface ValidationResult {
+export interface ValidationResult {
   valid: boolean;
   errors: string[];
   warnings: string[];
+}
+
+const MAX_TOKEN_LENGTH = 100;
+const MAX_LINE_LENGTH = 120;
+const FORBIDDEN_IN_QUOTES = /[=,'"\x00-\x1F]/;
+
+export function validateTokenLength(token: string): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (token.length > MAX_TOKEN_LENGTH) {
+    errors.push(`Token "${token}" exceeds maximum length of ${MAX_TOKEN_LENGTH} characters (${token.length} chars)`);
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+export function validateLineLength(line: string): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (line.length > MAX_LINE_LENGTH) {
+    errors.push(`Line exceeds maximum length of ${MAX_LINE_LENGTH} characters (${line.length} chars). Table Maintenance entries must not wrap.`);
+  } else if (line.length > MAX_LINE_LENGTH - 10) {
+    warnings.push(`Line is close to the ${MAX_LINE_LENGTH} character limit (${line.length} chars)`);
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+export function validateQuotedValue(value: string, fieldName: string = 'REC/RECODE'): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (FORBIDDEN_IN_QUOTES.test(value)) {
+    const forbidden = value.match(FORBIDDEN_IN_QUOTES);
+    errors.push(`${fieldName} contains forbidden characters: ${forbidden?.join(', ')}. Cannot include = ' " , or control characters inside quotes.`);
+  }
+
+  return { valid: errors.length === 0, errors, warnings };
+}
+
+export function detectBusinessNamePunctuation(input: string): {
+  hasHyphen: boolean;
+  hasAmpersand: boolean;
+  hasApostrophe: boolean;
+  hasSlash: boolean;
+  shouldResearch: boolean;
+} {
+  const hasHyphen = /-/.test(input);
+  const hasAmpersand = /&/.test(input);
+  const hasApostrophe = /'/.test(input);
+  const hasSlash = /\//.test(input);
+  
+  // Suggest research if it looks like a business name with special punctuation
+  const looksLikeBusiness = /\b(LLC|INC|CO|LTD|CORP|GROUP|HOLDINGS)\b/i.test(input);
+  const shouldResearch = looksLikeBusiness && (hasHyphen || hasAmpersand || hasApostrophe);
+
+  return { hasHyphen, hasAmpersand, hasApostrophe, hasSlash, shouldResearch };
 }
 
 /**

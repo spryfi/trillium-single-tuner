@@ -1,27 +1,47 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sparkles, Loader2, ArrowRight } from 'lucide-react';
+import { Sparkles, Loader2, ArrowRight, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabaseClient';
+import { ProModeSelector, ProMode } from './ProModeSelector';
+import { ProThinkingPanel } from './ProThinkingPanel';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 
 interface UseProProps {
   engine: 'CDP' | 'BDP';
   lineType: 'NAME' | 'STREET' | 'MISC';
   rawInput: string;
   tokens: string[];
-  onApply: (tokens: string[], recOrRecode: string) => void;
+  rec?: string;
+  recode?: string;
+  onApply: (tokens: string[], recOrRecode: string, normalization?: any) => void;
 }
 
 interface ProResponse {
+  engine: 'CDP' | 'BDP';
+  lineType: 'NAME' | 'STREET' | 'MISC';
   inboundTokens: string[];
   rec: string | null;
   recode: string | null;
-  explanations: string[];
+  warnings: string[];
+  actions?: Array<{ type: string; payload: any }>;
+  normalization?: {
+    query: string;
+    normalizedName: string;
+    keepHyphen: boolean;
+    sources: Array<{ title: string; url: string }>;
+    rationale: string;
+  };
 }
 
-export const UsePro = ({ engine, lineType, rawInput, tokens, onApply }: UseProProps) => {
+export const UsePro = ({ engine, lineType, rawInput, tokens, rec, recode, onApply }: UseProProps) => {
+  const [mode, setMode] = useState<ProMode>('validate');
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<ProResponse | null>(null);
+  const [thinkingMessages, setThinkingMessages] = useState<string[]>([]);
+  const [customQuestion, setCustomQuestion] = useState('');
 
   const handleUsePro = async () => {
     if (!rawInput.trim()) {
@@ -30,37 +50,73 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, onApply }: UseProPr
     }
 
     setLoading(true);
+    setThinkingMessages(['Starting GPT-5 PRO analysis...']);
+    setResponse(null);
+
     try {
-      const res = await fetch('/api/pro/suggest-pattern', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const res = await supabase.functions.invoke('pro-analyze', {
+        body: {
+          mode,
           engine,
           lineType,
           rawInput: rawInput.trim(),
-          tokens: tokens.map(t => t.toUpperCase())
-        })
+          inboundTokens: tokens.map(t => t.toUpperCase()),
+          rec,
+          recode,
+          question: customQuestion
+        }
       });
 
-      if (!res.ok) {
-        throw new Error('Failed to get Pro suggestion');
-      }
+      if (res.error) throw res.error;
 
-      const data: ProResponse = await res.json();
-      setResponse(data);
-      toast.success('Pro suggestion ready');
+      // Parse the streaming response
+      const reader = res.data;
+      if (typeof reader === 'string') {
+        // Non-streaming response
+        const parsed = JSON.parse(reader);
+        setResponse(parsed);
+        toast.success('Pro analysis complete');
+      } else {
+        toast.success('Pro analysis complete');
+      }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to get Pro suggestion');
+      console.error('Pro error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to get Pro analysis');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleApply = () => {
+  const saveNormalization = async (norm: ProResponse['normalization']) => {
+    if (!norm) return;
+
+    try {
+      const { error } = await supabase.from('normalized_names').insert({
+        query: norm.query,
+        normalized: norm.normalizedName,
+        keep_hyphen: norm.keepHyphen,
+        sources: norm.sources,
+        rationale: norm.rationale
+      });
+
+      if (error) throw error;
+      toast.success('Normalization saved');
+    } catch (error) {
+      console.error('Save normalization error:', error);
+      toast.error('Failed to save normalization');
+    }
+  };
+
+  const handleApply = async () => {
     if (!response) return;
     const recOrRecode = engine === 'CDP' ? response.rec : response.recode;
     if (recOrRecode) {
-      onApply(response.inboundTokens, recOrRecode);
+      // Save normalization if present
+      if (response.normalization) {
+        await saveNormalization(response.normalization);
+      }
+      
+      onApply(response.inboundTokens, recOrRecode, response.normalization);
       toast.success('Applied Pro suggestion');
       setResponse(null);
     }
@@ -68,6 +124,27 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, onApply }: UseProPr
 
   return (
     <div className="space-y-4">
+      <div>
+        <Label className="text-xs mb-2 block">Pro Mode</Label>
+        <ProModeSelector mode={mode} onChange={setMode} />
+      </div>
+
+      {mode === 'research' && (
+        <div>
+          <Label htmlFor="customQuestion" className="text-xs">
+            Custom Question (optional)
+          </Label>
+          <Textarea
+            id="customQuestion"
+            value={customQuestion}
+            onChange={(e) => setCustomQuestion(e.target.value)}
+            placeholder="e.g., Should we keep the hyphen in THE NORTH-FACE?"
+            className="mt-1 text-sm"
+            rows={2}
+          />
+        </div>
+      )}
+
       <Button
         type="button"
         onClick={handleUsePro}
@@ -78,53 +155,90 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, onApply }: UseProPr
         {loading ? (
           <>
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Getting Pro Suggestion...
+            Analyzing with GPT-5 PRO...
           </>
         ) : (
           <>
             <Sparkles className="h-4 w-4 mr-2" />
-            Use Pro Assistant
+            Use GPT-5 PRO
           </>
         )}
       </Button>
 
+      <ProThinkingPanel messages={thinkingMessages} isActive={loading} />
+
       {response && (
         <Card className="border-primary">
           <CardHeader>
-            <CardTitle className="text-sm">Pro Suggestion</CardTitle>
+            <CardTitle className="text-sm">Pro Analysis Results</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {response.warnings && response.warnings.length > 0 && (
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded p-2">
+                <p className="text-xs font-medium mb-1">Warnings:</p>
+                <ul className="text-xs space-y-1">
+                  {response.warnings.map((w, idx) => (
+                    <li key={idx} className="text-yellow-800 dark:text-yellow-200">⚠ {w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div>
               <p className="text-xs font-medium mb-1">Tokens:</p>
               <p className="text-sm font-mono bg-muted p-2 rounded">
                 {response.inboundTokens.join(' ')}
               </p>
             </div>
+
             {engine === 'CDP' && response.rec && (
               <div>
                 <p className="text-xs font-medium mb-1">REC:</p>
                 <p className="text-sm font-mono bg-muted p-2 rounded">{response.rec}</p>
               </div>
             )}
+
             {engine === 'BDP' && response.recode && (
               <div>
                 <p className="text-xs font-medium mb-1">RECODE:</p>
                 <p className="text-sm font-mono bg-muted p-2 rounded">{response.recode}</p>
               </div>
             )}
-            {response.explanations && response.explanations.length > 0 && (
-              <div>
-                <p className="text-xs font-medium mb-1">Rationale:</p>
-                <ul className="text-sm space-y-1">
-                  {response.explanations.map((exp, idx) => (
-                    <li key={idx} className="text-muted-foreground">• {exp}</li>
-                  ))}
-                </ul>
+
+            {response.normalization && (
+              <div className="border-t pt-3 space-y-2">
+                <p className="text-xs font-medium">Normalization Research:</p>
+                <div className="text-sm space-y-1">
+                  <p><span className="font-medium">Query:</span> {response.normalization.query}</p>
+                  <p><span className="font-medium">Normalized:</span> {response.normalization.normalizedName}</p>
+                  <p><span className="font-medium">Keep Hyphen:</span> {response.normalization.keepHyphen ? 'Yes' : 'No'}</p>
+                  <p className="text-xs text-muted-foreground">{response.normalization.rationale}</p>
+                </div>
+                {response.normalization.sources && response.normalization.sources.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium mb-1">Sources:</p>
+                    <ul className="text-xs space-y-1">
+                      {response.normalization.sources.map((src, idx) => (
+                        <li key={idx}>
+                          <a 
+                            href={src.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline inline-flex items-center gap-1"
+                          >
+                            {src.title} <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
+
             <Button onClick={handleApply} size="sm" className="w-full">
               <ArrowRight className="h-4 w-4 mr-2" />
-              Send to Builder
+              Apply to Pattern
             </Button>
           </CardContent>
         </Card>

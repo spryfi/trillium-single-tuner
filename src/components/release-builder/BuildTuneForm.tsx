@@ -7,6 +7,10 @@ import { RecEditor } from './RecEditor';
 import { TunePreview } from './TunePreview';
 import { NameParsingHelper } from './NameParsingHelper';
 import { UsePro } from './UsePro';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Info, AlertCircle } from 'lucide-react';
+import { detectBusinessNamePunctuation } from '@/utils/validation';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AnyPattern, CDPPattern, BDPPattern, tokenizeSample, suggestIntrinsicToken, LINE_TYPES } from '@/engine/patterns';
 import { generateBDPExample, generateCDPBusinessName, EXAMPLES } from '@/engine/examples';
 import { Sparkles, RotateCcw, Lightbulb, Wand2 } from 'lucide-react';
@@ -16,8 +20,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 
 interface BuildTuneFormProps {
@@ -148,7 +150,7 @@ export const BuildTuneForm = ({ onAddToQueue, defaultCountryCode }: BuildTuneFor
     toast.success('Name pattern applied');
   };
 
-  const handleApplyPro = (proTokens: string[], recOrRecode: string) => {
+  const handleApplyPro = (proTokens: string[], recOrRecode: string, normalization?: any) => {
     setTokens(proTokens);
     if (engine === 'CDP') {
       const recParts = recOrRecode.split(' ').map(part => {
@@ -162,7 +164,19 @@ export const BuildTuneForm = ({ onAddToQueue, defaultCountryCode }: BuildTuneFor
     } else {
       setRecodeLiteral(recOrRecode);
     }
+
+    // Handle normalization
+    if (normalization && !normalization.keepHyphen) {
+      // Remove HYPHEN tokens
+      const filtered = proTokens.filter(t => t.toUpperCase() !== 'HYPHEN');
+      setTokens(filtered);
+      toast.info(`Removed hyphen based on normalization: ${normalization.normalizedName}`);
+    }
   };
+
+  // Detect if we should suggest normalization research
+  const punctuationCheck = detectBusinessNamePunctuation(rawInput);
+  const shouldSuggestResearch = engine === 'CDP' && lineType === 'NAME' && punctuationCheck.shouldResearch;
 
   const handleAddToken = () => {
     setTokens([...tokens, 'ALPHA']);
@@ -233,21 +247,22 @@ export const BuildTuneForm = ({ onAddToQueue, defaultCountryCode }: BuildTuneFor
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Build Tune</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Engine explanations */}
-          <Alert>
-            <Lightbulb className="h-4 w-4" />
-            <AlertDescription className="text-sm">
-              <strong>CDP</strong> — Customer Data Parser: parses names, streets, and misc lines into structured attributes (GVN-NM1, SRNM, STR-NM).
-              <br />
-              <strong>BDP</strong> — Business Data Parser: maps free-form business text into categories you define (YEAR, MODEL, BRAND, etc.), outputting to BP_USERn fields.
-            </AlertDescription>
-          </Alert>
+    <TooltipProvider>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Build Tune</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Engine explanations */}
+            <Alert>
+              <Lightbulb className="h-4 w-4" />
+              <AlertDescription className="text-sm">
+                <strong>CDP</strong> — Customer Data Parser: parses names, streets, and misc lines into structured attributes (GVN-NM1, SRNM, STR-NM).
+                <br />
+                <strong>BDP</strong> — Business Data Parser: maps free-form business text into categories you define (YEAR, MODEL, BRAND, etc.), outputting to BP_USERn fields.
+              </AlertDescription>
+            </Alert>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
@@ -355,28 +370,46 @@ export const BuildTuneForm = ({ onAddToQueue, defaultCountryCode }: BuildTuneFor
               className="font-mono text-sm"
               rows={3}
             />
+            
+            {shouldSuggestResearch && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="text-xs">
+                  This appears to be a business name with special punctuation. Consider using "Research Normalization" mode in GPT-5 PRO below to determine the correct registered name.
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            {engine === 'BDP' && (
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription className="text-xs">
+                  <strong>BDP patterns:</strong> 3 lines total. Line 1: inbound tokens. Line 2: PATTERN MISC DEF. Line 3: RECODE='…'. 
+                  No = ' " , inside the quotes.
+                </AlertDescription>
+              </Alert>
+            )}
+            
             <div className="flex gap-2 mt-2">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleTokenAssist}
-                    >
-                      <Sparkles className="h-4 w-4 mr-1" />
-                      Token Assist
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p className="text-xs">
-                      Suggests intrinsic tokens (ALPHA, NUMERIC, HYPHEN, etc.) from your input. 
-                      Click any chip to change it to a category or attribute.
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTokenAssist}
+                  >
+                    <Sparkles className="h-4 w-4 mr-1" />
+                    Token Assist
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="text-xs">
+                    Suggests intrinsic tokens (ALPHA, NUMERIC, HYPHEN, etc.) from your input. 
+                    Click any chip to change it to a category or attribute.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
               <Button
                 type="button"
                 variant="outline"
@@ -390,7 +423,20 @@ export const BuildTuneForm = ({ onAddToQueue, defaultCountryCode }: BuildTuneFor
           </div>
 
           <div>
-            <label className="text-sm font-medium mb-2 block">Inbound Tokens</label>
+            <div className="flex items-center gap-2 mb-2">
+              <label className="text-sm font-medium">Inbound Tokens</label>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="text-xs">
+                    These describe the shape of the text you're parsing—either generic shapes (ALPHA, NUMERIC, HYPHEN) or named attributes (GVN-NM1, SRNM). 
+                    They form the first line of your pattern. Token length ≤ 100 chars; tokens do not wrap.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             <div className="flex flex-wrap gap-2 mb-2">
               {tokens.map((token, idx) => (
                 <TokenChip
@@ -401,35 +447,71 @@ export const BuildTuneForm = ({ onAddToQueue, defaultCountryCode }: BuildTuneFor
                 />
               ))}
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleAddToken}
-            >
-              Add Token
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddToken}
+              >
+                Add Token
+              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="text-xs">
+                    Add another piece (word/symbol) if your input has more parts. Keep the total line within 120 characters so the compiler accepts it.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
           </div>
 
           {engine === 'CDP' ? (
             <>
-              <RecEditor
-                recode={recode}
-                tokenCount={tokens.length}
-                onChange={setRecode}
-              />
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="text-sm font-medium">REC Mapping</label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="text-xs">
+                        Tell the parser which token fills which output field. Example: 'ALPHA ALPHA' → REC='GVN-NM1(1) SRNM(1)' maps the 1st token to Given Name and the 2nd to Surname.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <RecEditor
+                  recode={recode}
+                  tokenCount={tokens.length}
+                  onChange={setRecode}
+                />
+              </div>
               {lineType === 'NAME' && (
                 <NameParsingHelper onApply={handleApplyNameHelper} />
               )}
             </>
           ) : (
             <div>
-              <label className="text-sm font-medium mb-2 block">
-                RECODE (required)
-                <span className="ml-2 text-xs text-muted-foreground">
-                  Third line of BDP pattern. No =, quotes, or commas inside.
-                </span>
-              </label>
+              <div className="flex items-center gap-2 mb-2">
+                <label className="text-sm font-medium">
+                  RECODE (required)
+                </label>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="text-xs">
+                      Line 3 of a BDP pattern. List the output categories (e.g., YEAR MAKE MODEL). Characters = ' " , are not allowed inside the quotes.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <input
                 type="text"
                 value={recodeLiteral}
@@ -437,6 +519,9 @@ export const BuildTuneForm = ({ onAddToQueue, defaultCountryCode }: BuildTuneFor
                 placeholder="e.g., YEAR MAKE MODEL or SKU PRODUCT SIZE COLOR BRAND"
                 className="w-full px-3 py-2 border rounded bg-background font-mono"
               />
+              <span className="text-xs text-muted-foreground mt-1 block">
+                Third line of BDP pattern. No =, quotes, or commas inside.
+              </span>
             </div>
           )}
 
@@ -463,6 +548,8 @@ export const BuildTuneForm = ({ onAddToQueue, defaultCountryCode }: BuildTuneFor
             lineType={lineType}
             rawInput={rawInput}
             tokens={tokens}
+            rec={engine === 'CDP' ? recode.map(r => `${r.attr}(${r.index})`).join(' ') : undefined}
+            recode={engine === 'BDP' ? recodeLiteral : undefined}
             onApply={handleApplyPro}
           />
         </div>
@@ -478,5 +565,6 @@ export const BuildTuneForm = ({ onAddToQueue, defaultCountryCode }: BuildTuneFor
         </Button>
       </div>
     </form>
+    </TooltipProvider>
   );
 };
