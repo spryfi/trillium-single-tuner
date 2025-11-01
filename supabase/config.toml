@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.pro-suggest-pattern]
 verify_jwt = false
 
+[functions.pro-fix-name-pattern]
+verify_jwt = false
+
 [functions.pro-normalize]
 verify_jwt = false
 

@@ -23,6 +23,8 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, rec, recode, onAppl
   const [thinkingMessages, setThinkingMessages] = useState<string[]>([]);
   const [showSources, setShowSources] = useState(false);
   const [sourcesData, setSourcesData] = useState<any>(null);
+  const [showFixNamePanel, setShowFixNamePanel] = useState(false);
+  const [fixNameResults, setFixNameResults] = useState<any>(null);
 
   const handleResearchNormalization = async () => {
     if (!rawInput.trim()) {
@@ -187,6 +189,50 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, rec, recode, onAppl
     }
   };
 
+  const handleFixNamePattern = async () => {
+    if (!rec) {
+      toast.error('REC mapping is required');
+      return;
+    }
+
+    setLoading(true);
+    setThinkingMessages(['Analyzing NAME pattern structure...']);
+
+    try {
+      const res = await supabase.functions.invoke('pro-fix-name-pattern', {
+        body: { rawInput, inboundTokens: tokens, rec }
+      });
+
+      if (res.error) throw res.error;
+      const j = res.data;
+
+      if (j.error) throw new Error(j.error);
+
+      setFixNameResults(j);
+      setShowFixNamePanel(true);
+      
+      toast.success('NAME pattern analysis complete');
+    } catch (err: any) {
+      console.error('Fix NAME pattern error:', err);
+      toast.error(err.message || 'Failed to analyze NAME pattern');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const applyFixedNamePattern = () => {
+    if (!fixNameResults) return;
+
+    const { inboundTokens: newTokens, rec: newRec } = fixNameResults;
+    
+    if (Array.isArray(newTokens)) {
+      onApply(newTokens, newRec || rec || '');
+      toast.success('Applied corrected NAME pattern');
+    }
+    
+    setShowFixNamePanel(false);
+  };
+
   return (
     <div className="space-y-4">
       <TooltipProvider>
@@ -261,10 +307,84 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, rec, recode, onAppl
               </p>
             </TooltipContent>
           </Tooltip>
+
+          {/* Fix NAME Pattern Button - Only for CDP NAME patterns */}
+          {engine === 'CDP' && lineType === 'NAME' && rec && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  onClick={handleFixNamePattern}
+                  disabled={loading}
+                  variant="outline"
+                  className="w-full"
+                >
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Fix NAME Pattern (PRO)
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="max-w-xs text-xs">
+                  Validates NAME pattern structure and corrects multi-token surnames (e.g., "DE LA ROSA" → repeat SRNM(1))
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </TooltipProvider>
 
       <ProThinkingPanel messages={thinkingMessages} isActive={loading} />
+
+      {/* Fix NAME Pattern Results Panel */}
+      <Sheet open={showFixNamePanel} onOpenChange={setShowFixNamePanel}>
+        <SheetContent side="right" className="w-full sm:max-w-xl overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>NAME Pattern Analysis</SheetTitle>
+          </SheetHeader>
+          
+          {fixNameResults && (
+            <div className="space-y-4 mt-4">
+              <div>
+                <h3 className="font-semibold text-sm mb-2">Explanation</h3>
+                <p className="text-sm text-muted-foreground">{fixNameResults.explanation}</p>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-sm mb-2">Corrected Pattern</h3>
+                <pre className="text-xs bg-muted p-3 rounded whitespace-pre-wrap font-mono">
+                  {fixNameResults.correctPatternTwoLine}
+                </pre>
+              </div>
+
+              {fixNameResults.inboundTokens && (
+                <div>
+                  <h3 className="font-semibold text-sm mb-2">Token Sequence</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {fixNameResults.inboundTokens.map((tok: string, i: number) => (
+                      <span key={i} className="px-2 py-1 bg-primary/10 text-xs rounded">
+                        {tok}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {fixNameResults.rec && (
+                <div>
+                  <h3 className="font-semibold text-sm mb-2">REC Mapping</h3>
+                  <code className="text-xs bg-muted p-2 rounded block">
+                    {fixNameResults.rec}
+                  </code>
+                </div>
+              )}
+
+              <Button onClick={applyFixedNamePattern} className="w-full">
+                Apply Corrected Pattern
+              </Button>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
 
       <Sheet open={showSources} onOpenChange={setShowSources}>
         <SheetContent>
