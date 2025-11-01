@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { ProThinkingPanel } from './ProThinkingPanel';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { removeLetterHyphens, reindexRec } from '@/lib/normalize';
 
 interface UseProProps {
   engine: 'CDP' | 'BDP';
@@ -29,13 +30,13 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, rec, recode, onAppl
       return;
     }
 
+    const prev = { rawInput, tokens: [...tokens], rec };
     setLoading(true);
     setThinkingMessages(['Researching normalization...']);
     
     try {
       const res = await supabase.functions.invoke('pro-normalize', {
         body: {
-          mode: 'research',
           engine,
           lineType,
           rawInput: rawInput.trim(),
@@ -50,34 +51,49 @@ export const UsePro = ({ engine, lineType, rawInput, tokens, rec, recode, onAppl
 
       if (j.error) throw new Error(j.error);
 
-      // Apply edits to UI
-      const updatedTokens = j.applyEdits?.inboundTokens || tokens;
-      const updatedRec = j.applyEdits?.rec || rec;
-      const updatedRawInput = j.applyEdits?.rawInput || j.normalizedName;
+      // 1) Choose source of truth for new raw text
+      let nextRaw = j.applyEdits?.rawInput || j.normalizedName || rawInput;
 
-      // Save to normalized_names
+      // 2) If the model says keepHyphen=false but didn't supply edits, do the fallback
+      let nextTokens = Array.isArray(j.applyEdits?.inboundTokens) ? j.applyEdits.inboundTokens : tokens;
+      let nextRec = typeof j.applyEdits?.rec === 'string' ? j.applyEdits.rec : rec;
+
+      if (j.keepHyphen === false) {
+        // local fallback changes (safe no-ops if not needed)
+        nextRaw = removeLetterHyphens(nextRaw);
+        // remove any HYPHEN chips that exist
+        const removeIdx: number[] = [];
+        nextTokens = nextTokens.filter((tok, i) => {
+          const keep = tok.toUpperCase() !== 'HYPHEN';
+          if (!keep) removeIdx.push(i + 1); // 1-based
+          return keep;
+        });
+        if (removeIdx.length && nextRec) nextRec = reindexRec(nextRec, removeIdx);
+      }
+
+      // 3) Apply to UI
+      onApply(nextTokens.map((t: string) => t.toUpperCase()), nextRec || '');
+
+      // 4) Persist research
       await supabase.from('normalized_names').insert({
-        query: rawInput,
-        normalized: updatedRawInput,
+        query: prev.rawInput,
+        normalized: nextRaw,
         keep_hyphen: !!j.keepHyphen,
         sources: j.sources || [],
         rationale: j.rationale || null
       });
 
-      // Update parent component
-      onApply(updatedTokens, updatedRec);
-
-      // Show sources panel
+      // 5) Operator feedback
+      toast.success(`Normalized: ${nextRaw}`);
       setSourcesData({
-        normalizedName: updatedRawInput,
+        normalizedName: nextRaw,
         keepHyphen: j.keepHyphen,
-        sources: j.sources,
-        rationale: j.rationale
+        sources: j.sources || [],
+        rationale: j.rationale || 'Applied normalization based on PRO research.'
       });
       setShowSources(true);
-
-      toast.success('Normalized and applied');
     } catch (err: any) {
+      // Never blank the screen—restore and show error
       console.error('Normalization error:', err);
       toast.error(err.message || 'Normalization error');
     } finally {
