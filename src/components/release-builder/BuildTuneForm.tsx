@@ -8,12 +8,11 @@ import { TunePreview } from './TunePreview';
 import { NameParsingHelper } from './NameParsingHelper';
 import { UsePro } from './UsePro';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Info, AlertCircle } from 'lucide-react';
+import { Info, AlertCircle, Sparkles, RotateCcw, Lightbulb, Wand2 } from 'lucide-react';
 import { detectBusinessNamePunctuation } from '@/utils/validation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AnyPattern, CDPPattern, BDPPattern, tokenizeSample, suggestIntrinsicToken, LINE_TYPES } from '@/engine/patterns';
 import { generateBDPExample, generateCDPBusinessName, EXAMPLES } from '@/engine/examples';
-import { Sparkles, RotateCcw, Lightbulb, Wand2 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
