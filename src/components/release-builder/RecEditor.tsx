@@ -76,6 +76,9 @@ export const RecEditor = ({ recode, tokenCount, onChange }: RecEditorProps) => {
       {recode.length === 0 && (
         <p className="text-sm text-muted-foreground">No REC items. Click "Add Item" to start.</p>
       )}
+      <p className="text-xs text-muted-foreground mt-2">
+        REC attributes must match Trillium's standard names (e.g., GVN-NM1, SRNM, STR-NM). Unknown names will be warned, not blocked.
+      </p>
     </div>
   );
 };

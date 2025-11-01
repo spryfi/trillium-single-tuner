@@ -24,7 +24,7 @@ export const QueuePanel = ({ queue, onRemove, onMoveUp, onMoveDown }: QueuePanel
         ) : (
           queue.map((pattern, idx) => {
             const preview = pattern.engine === 'CDP' 
-              ? emitCDPPattern(pattern)
+              ? emitCDPPattern(pattern).output
               : emitBDPPattern(pattern);
             
             return (

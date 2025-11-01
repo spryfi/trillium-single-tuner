@@ -67,11 +67,18 @@ function isKnownToken(t: string): boolean {
   return INTRINSIC_TOKENS.has(tt) || NAME_ATTRS.has(tt) || STREET_ATTRS.has(tt);
 }
 
+export function isKnownAttr(a: string): boolean {
+  const aa = U.up(a);
+  return NAME_ATTRS.has(aa) || STREET_ATTRS.has(aa);
+}
+
 function assertLineTypeCDP(t: LineType) {
   if (!LINE_TYPES.includes(t)) throw new Error(`Invalid CDP line type: ${t}`);
 }
 
-function validateCDP(p: CDPPattern) {
+function validateCDP(p: CDPPattern): { warnings: string[] } {
+  const warnings: string[] = [];
+  
   assertLineTypeCDP(p.lineType);
   if (!Array.isArray(p.inboundTokens) || p.inboundTokens.length === 0) {
     throw new Error('Inbound tokens are required');
@@ -79,7 +86,7 @@ function validateCDP(p: CDPPattern) {
   p.inboundTokens.forEach((tok, i) => {
     const T = sanitizeToken(tok);
     if (!isKnownToken(T)) {
-      throw new Error(`Unknown token at position ${i + 1}: ${tok}`);
+      warnings.push(`Unknown token at position ${i + 1}: ${tok}`);
     }
   });
   if (!Array.isArray(p.recode) || p.recode.length === 0) {
@@ -87,13 +94,15 @@ function validateCDP(p: CDPPattern) {
   }
   p.recode.forEach((r, i) => {
     const A = U.up(r.attr);
-    if (!(NAME_ATTRS.has(A) || STREET_ATTRS.has(A))) {
-      throw new Error(`Unknown REC attribute at index ${i + 1}: ${r.attr}`);
+    if (!isKnownAttr(A)) {
+      warnings.push(`Unknown REC attribute: ${r.attr}`);
     }
     if (!U.isInt(r.index) || r.index < 1 || r.index > p.inboundTokens.length) {
       throw new Error(`REC index out of range at index ${i + 1}: ${r.index}`);
     }
   });
+  
+  return { warnings };
 }
 
 function validateBDP(p: BDPPattern) {
@@ -113,8 +122,8 @@ function validateBDP(p: BDPPattern) {
 }
 
 /** Render one pattern block for CLWDPAT */
-export function emitCDPPattern(p: CDPPattern): string {
-  validateCDP(p);
+export function emitCDPPattern(p: CDPPattern): { output: string; warnings: string[] } {
+  const validation = validateCDP(p);
   const toks = p.inboundTokens.map(sanitizeToken).join(' ');
   const header = `'${toks}' PATTERN ${p.lineType} DEF`;
   const rec = p.recode.map(r => `${U.up(r.attr)}(${r.index})`).join(' ');
@@ -122,7 +131,7 @@ export function emitCDPPattern(p: CDPPattern): string {
   const comment = p.comment ? `# ${p.comment}\n` : '';
   const block = `${comment}${header}\n${recLine}\n`;
   U.ensureNoTabs(block);
-  return block;
+  return { output: block, warnings: validation.warnings };
 }
 
 export function emitBDPPattern(p: BDPPattern): string {
@@ -141,7 +150,13 @@ export function emitBDPPattern(p: BDPPattern): string {
 export function emitCLWDPAT(patterns: AnyPattern[], opts?: { header?: string; commentChar?: string }): string {
   const cc = (opts?.commentChar ?? '#').slice(0,1);
   const header = opts?.header ? `${cc} ${opts.header}\n` : '';
-  const body = patterns.map(p => p.engine === 'CDP' ? emitCDPPattern(p) : emitBDPPattern(p)).join('\n');
+  const body = patterns.map(p => {
+    if (p.engine === 'CDP') {
+      const result = emitCDPPattern(p);
+      return result.output;
+    }
+    return emitBDPPattern(p);
+  }).join('\n');
   const out = `${header}${body}`.replace(/\r?\n/g, '\n');
   U.ensureNoTabs(out);
   return out.endsWith('\n') ? out : out + '\n';
