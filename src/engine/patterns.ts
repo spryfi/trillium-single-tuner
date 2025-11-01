@@ -97,7 +97,7 @@ function validateCDP(p: CDPPattern) {
 }
 
 function validateBDP(p: BDPPattern) {
-  if (p.lineType !== 'MISC') throw new Error('BDP patterns use line type MISC');
+  if (p.lineType !== 'MISC') throw new Error('BDP patterns must use line type MISC');
   if (!Array.isArray(p.inboundTokens) || p.inboundTokens.length === 0) {
     throw new Error('Inbound tokens are required');
   }
@@ -106,8 +106,10 @@ function validateBDP(p: BDPPattern) {
     if (!isKnownToken(T)) throw new Error(`Unknown token at position ${i + 1}: ${tok}`);
   });
   const lit = p.recodeLiteral ?? '';
-  if (!lit.length) throw new Error('REC literal is required for BDP');
-  if (U.illegalInQuoted(lit)) throw new Error('REC literal contains illegal characters (=, quotes, comma, or control chars)');
+  if (!lit.length) throw new Error("RECODE line is required for BDP (third line: RECODE='...')");
+  if (U.illegalInQuoted(lit)) {
+    throw new Error('RECODE contains illegal characters (=, quotes, comma, or control chars)');
+  }
 }
 
 /** Render one pattern block for CLWDPAT */
@@ -126,11 +128,12 @@ export function emitCDPPattern(p: CDPPattern): string {
 export function emitBDPPattern(p: BDPPattern): string {
   validateBDP(p);
   const toks = p.inboundTokens.map(sanitizeToken).join(' ');
-  const header = `'${toks}' PATTERN ${p.lineType} DEF`;
+  const header1 = `'${toks}'`;
+  const header2 = `PATTERN MISC DEF`;
   const recLit = p.recodeLiteral.replace(/\s+/g,' ').trim();
-  const recLine = `REC='${recLit}'`;
+  const recLine = `RECODE='${recLit}'`;
   const comment = p.comment ? `# ${p.comment}\n` : '';
-  const block = `${comment}${header}\n${recLine}\n`;
+  const block = `${comment}${header1}\n${header2}\n${recLine}\n`;
   U.ensureNoTabs(block);
   return block;
 }
