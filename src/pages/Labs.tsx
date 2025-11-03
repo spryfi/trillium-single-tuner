@@ -1,10 +1,13 @@
 import React from "react";
+import { Header } from "@/components/Header";
 import { LessonRunner } from "../widgets/LessonRunner";
 import "../styles/labs.css";
 
 export default function LabsPage() {
   return (
-    <main className="labs-root" aria-label="Labs learning page">
+    <>
+      <Header />
+      <main className="labs-root" aria-label="Labs learning page">
       <header className="labs-header">
         <h1>Labs</h1>
         <p className="subtitle">
@@ -13,5 +16,6 @@ export default function LabsPage() {
       </header>
       <LessonRunner />
     </main>
+    </>
   );
 }
